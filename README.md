@@ -32,9 +32,9 @@ If you have been granted access to this repository, please ensure you:
 For access requests or questions regarding this proprietary software, please contact:
 
 - **ARDE Development Team**
-- **Email**: [contact@arde.com](mailto:oshenvithanage@proton.me)
-- **Security Issues**: [security@arde.com](mailto:oshenvithanage@proton.me)
+- **Email**: [oshenvithanage@proton.me](mailto:oshenvithanage@proton.me)
+- **Security Issues**: [oshenvithanage@proton.me](mailto:oshenvithanage@proton.me)
 
 ---
 
-**© 2024 ARDE. All rights reserved. This software is proprietary and confidential.**
+**© 2025 ARDE. All rights reserved. This software is proprietary and confidential.**
