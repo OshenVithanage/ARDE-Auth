@@ -14,15 +14,32 @@ export default function MessageGroup({ messages, onClose, onClearAll, newestMess
     const [isExpanded, setIsExpanded] = useState(false)
     const [isExitingAll, setIsExitingAll] = useState(false)
     const groupRef = useRef<HTMLDivElement>(null)
+    const clearAllTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const messageCount = messages.length
 
     const handleClearAll = () => {
+        // Clear any existing timer
+        if (clearAllTimerRef.current) {
+            clearTimeout(clearAllTimerRef.current)
+            clearAllTimerRef.current = null
+        }
+        
         setIsExitingAll(true)
-        setTimeout(() => {
+        clearAllTimerRef.current = setTimeout(() => {
             onClearAll()
-            setIsExitingAll(false)
+            // Removed setIsExitingAll(false) - rely on remount to reset state
         }, 300) 
     }
+
+    // Cleanup effect to clear timer on unmount
+    useEffect(() => {
+        return () => {
+            if (clearAllTimerRef.current) {
+                clearTimeout(clearAllTimerRef.current)
+                clearAllTimerRef.current = null
+            }
+        }
+    }, [])
 
     const addMessage = (newMessage: ToastMessageData) => {
         onClose(newMessage.id); // Ensure no duplicate messages are added
@@ -62,14 +79,15 @@ export default function MessageGroup({ messages, onClose, onClearAll, newestMess
                     // Expanded state styles
                     const expandedTop = index * 65;
 
+                    // Compute zIndex in JS to avoid dynamic Tailwind classes
+                    const zIndex = isNewest ? 20 : Math.max(1, 10 - reversedIndex);
+
                     return (
                         <div
                             key={message.id}
-                            className={`
-                                absolute top-0 left-0 w-full transition-all duration-300 ease-out
-                                ${isNewest ? 'z-20' : `z-${10 - reversedIndex}`}
-                            `}
+                            className="absolute top-0 left-0 w-full transition-all duration-300 ease-out"
                             style={{
+                                zIndex,
                                 transform: isExpanded 
                                     ? `translateY(${expandedTop}px)`
                                     : `translateY(${collapsedTop}px) scale(${collapsedScale})`,

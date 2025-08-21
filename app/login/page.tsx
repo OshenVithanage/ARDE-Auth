@@ -113,7 +113,7 @@ export default function Login() {
             </div>
 
             {/* Right side - Login form */}
-            <div className="flex-1 flex items-center justify-center p-8 bg-[var(--baground)]">
+            <div className="flex-1 flex items-center justify-center p-8 bg-[var(--background)]">
                 <div className="w-full max-w-md space-y-8">
                     <div className="text-left text-2xl font-bold">
                         <h2 className="text-3xl font-bold text-[var(--text)]">Sign in</h2>
@@ -157,9 +157,9 @@ export default function Login() {
                                 <label htmlFor="password" className="block text-sm font-medium text-[var(--text)]">
                                     *Password
                                 </label>
-                                <span className="text-sm text-gray-500">
+                                <a href="/forgot-password" className="text-sm text-gray-500 hover:text-[var(--accent-main)] transition-colors">
                                     Forgot password?
-                                </span>
+                                </a>
                             </div>
                             <div className="relative">
                                 <input
@@ -256,7 +256,7 @@ export default function Login() {
                                 <div className="w-full border-t border-[var(--border)]" />
                             </div>
                             <div className="relative flex justify-center text-sm">
-                                <span className="px-2 bg-[var(--baground)] text-gray-500">OR</span>
+                                <span className="px-2 bg-[var(--background)] text-gray-500">OR</span>
                             </div>
                         </div>
 

@@ -32,7 +32,7 @@ export default function Accounts() {
     }
 
     return (
-        <div className="min-h-screen bg-[var(--baground)] p-8">
+        <div className="min-h-screen bg-[var(--background)] p-8">
             <div className="max-w-4xl mx-auto">
                 <div className="bg-[var(--primary)] rounded-lg shadow-lg p-8">
                     <div className="flex justify-between items-center mb-8">

@@ -69,8 +69,16 @@ export default function EmailConfirmation() {
     }
 
     const handleVerifyOtp = async () => {
-        if (!otpCode || otpCode.length < 4) {
-            showError('Please enter a valid verification code.')
+        // Trim the input and validate it only contains digits
+        const trimmedOtp = otpCode.trim();
+        if (!trimmedOtp || trimmedOtp.length < 6) {
+            showError('Please enter a valid 6-digit verification code.')
+            return
+        }
+        
+        // Validate that the OTP only contains digits
+        if (!/^\d{6}$/.test(trimmedOtp)) {
+            showError('Please enter a valid 6-digit verification code containing only numbers.')
             return
         }
 
@@ -79,7 +87,7 @@ export default function EmailConfirmation() {
         try {
             const { data, error } = await supabase.auth.verifyOtp({
                 email,
-                token: otpCode,
+                token: trimmedOtp,
                 type: 'signup'
             })
 
@@ -128,7 +136,7 @@ export default function EmailConfirmation() {
             </div>
 
             {/* Right side - Email confirmation content */}
-            <div className="flex-1 flex items-center justify-center p-8 bg-[var(--baground)]">
+            <div className="flex-1 flex items-center justify-center p-8 bg-[var(--background)]">
                 <div className="w-full max-w-md space-y-8 text-center">
                     <div className="space-y-4">
                         {/* Email icon */}
@@ -235,7 +243,7 @@ export default function EmailConfirmation() {
                                 <div className="w-full border-t border-[var(--border)]" />
                             </div>
                             <div className="relative flex justify-center text-sm">
-                                <span className="px-2 bg-[var(--baground)] text-gray-500">Didn't receive the email?</span>
+                                <span className="px-2 bg-[var(--background)] text-gray-500">Didn't receive the email?</span>
                             </div>
                         </div>
                     </div>

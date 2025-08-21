@@ -130,7 +130,7 @@ export default function Signup() {
             </div>
 
             {/* Right side - Signup form */}
-            <div className="flex-1 flex items-center justify-center p-8 bg-[var(--baground)]">
+            <div className="flex-1 flex items-center justify-center p-8 bg-[var(--background)]">
                 <div className="w-full max-w-md space-y-8">
                     <div className="text-left text-2xl font-bold">
                         <h2 className="text-3xl font-bold text-[var(--text)]">Sign up</h2>
@@ -301,7 +301,7 @@ export default function Signup() {
                                 <div className="w-full border-t border-[var(--border)]" />
                             </div>
                             <div className="relative flex justify-center text-sm">
-                                <span className="px-2 bg-[var(--baground)] text-gray-500">OR</span>
+                                <span className="px-2 bg-[var(--background)] text-gray-500">OR</span>
                             </div>
                         </div>
 

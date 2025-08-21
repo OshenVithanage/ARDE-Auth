@@ -149,7 +149,7 @@
 
 :root {
   /* Light mode colors */
-  --baground: #f9f9fa;
+  --background: #f9f9fa;
   --primary: #ffffff;
   --secondary: #f4f4f7;
   --border: #a7a7ab;
@@ -161,7 +161,6 @@
   --accent-light: #a8b1d6;
   --accent-dark: #4a5397;
   /* For backward compatibility */
-  --background: var(--baground);
   --foreground: var(--text);
 }
 
@@ -169,21 +168,20 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Dark mode colors */
-    --baground: #131315;
-    --primary: #1d1d21;
-    --secondary: #2d2d31;
-    --border: #2b2b2f;
-    --text: #ededf0;
-    --accent: #ededf0;
-    --accent-main: #9ba4d4;
-    --accent-hover: #a8b1dc;
-    --accent-focus: #b5bde4;
-    --accent-light: #c2c9e8;
-    --accent-dark: #5d6693;
-    /* For backward compatibility */
-    --background: var(--baground);
-    --foreground: var(--text);
+      /* Dark mode colors */
+  --background: #131315;
+  --primary: #1d1d21;
+  --secondary: #2d2d31;
+  --border: #2b2b2f;
+  --text: #ededf0;
+  --accent: #ededf0;
+  --accent-main: #9ba4d4;
+  --accent-hover: #a8b1dc;
+  --accent-focus: #b5bde4;
+  --accent-light: #c2c9e8;
+  --accent-dark: #5d6693;
+  /* For backward compatibility */
+  --foreground: var(--text);
   }
 }
 
