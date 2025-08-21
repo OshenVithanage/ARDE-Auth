@@ -1,6 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { useToast } from '../components/messaging'
+import { createClientComponentClient } from '../lib/supabase'
+import { useRouter } from 'next/navigation'
 
 export default function Signup() {
     const [showPassword, setShowPassword] = useState(false)
@@ -9,39 +12,92 @@ export default function Signup() {
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [socialLoading, setSocialLoading] = useState<string | null>(null)
+    const { showError, showWarning, showSuccess } = useToast()
+    const supabase = createClientComponentClient()
+    const router = useRouter()
 
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault()
         
         // Check if all fields are filled
         if (!name || !email || !password) {
-            alert('Please fill in all fields.')
+            showError('Please fill in all fields.')
+            return
+        }
+
+        // Validate password strength
+        if (password.length < 6) {
+            showError('Password must be at least 6 characters long.')
             return
         }
         
         setLoading(true)
         
-        // Simulate signup process
-        setTimeout(() => {
-            console.log('Signup attempt:', { name, email, password })  
+        try {
+            const { data, error } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: {
+                        full_name: name,
+                    },
+                    emailRedirectTo: `${window.location.origin}/auth/callback`
+                }
+            })
+
+            if (error) {
+                if (error.message.includes('User already registered')) {
+                    showError('An account with this email already exists. Please sign in instead.')
+                } else {
+                    showError(error.message)
+                }
+                setLoading(false)
+                return
+            }
+
+            if (data.user && !data.session) {
+                // Email confirmation required
+                showSuccess('Account created successfully! Please check your email and verify your account using the link or code.')
+                // Clear form fields
+                setName('')
+                setEmail('')
+                setPassword('')
+                // Redirect to email confirmation page
+                router.push(`/email-confirmation?email=${encodeURIComponent(email)}`)
+            } else if (data.session) {
+                // User is automatically signed in (if email confirmation is disabled)
+                showSuccess('Account created and signed in successfully!')
+                router.push('/')
+            }
+        } catch (error) {
+            console.error('Signup error:', error)
+            showError('An unexpected error occurred. Please try again.')
+        } finally {
             setLoading(false)
-            // Clear form fields
-            setName('')
-            setEmail('')
-            setPassword('')
-            alert('Signup functionality removed - UI only')
-        }, 1000)
+        }
     }
 
-    const handleSocialSignup = (provider: string) => {
+    const handleSocialSignup = async (provider: 'google' | 'apple') => {
         setSocialLoading(provider)
         
-        // Simulate social signup process
-        setTimeout(() => {
-            console.log(`${provider} signup attempt`)
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider,
+                options: {
+                    redirectTo: `${window.location.origin}/auth/callback`
+                }
+            })
+
+            if (error) {
+                showError(`Failed to sign up with ${provider}: ${error.message}`)
+                setSocialLoading(null)
+            }
+            // If successful, the user will be redirected to the OAuth provider
+        } catch (error) {
+            console.error(`${provider} signup error:`, error)
+            showError(`An unexpected error occurred with ${provider} sign up.`)
             setSocialLoading(null)
-            alert(`${provider} signup functionality removed - UI only`)
-        }, 1000)
+        }
     }
 
     return (

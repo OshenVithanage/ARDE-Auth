@@ -1,6 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { useToast } from '../components/messaging'
+import { createClientComponentClient } from '../lib/supabase'
+import { useRouter } from 'next/navigation'
 
 export default function Login() {
     const [showPassword, setShowPassword] = useState(false)
@@ -8,38 +11,76 @@ export default function Login() {
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [socialLoading, setSocialLoading] = useState<string | null>(null)
+    const { showError, showWarning, showSuccess } = useToast()
+    const supabase = createClientComponentClient()
+    const router = useRouter()
 
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault()
         
         // Check if email or password is empty
         if (!email || !password) {
-            alert('Please fill in all fields.')
+            showError('Please fill in all fields.')
             return
         }
         
         setLoading(true)
         
-        // Simulate login process
-        setTimeout(() => {
-            console.log('Login attempt:', { email, password })  
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            })
+
+            if (error) {
+                if (error.message.includes('Email not confirmed')) {
+                    showError('Please check your email and click the confirmation link before signing in.')
+                } else if (error.message.includes('Invalid login credentials')) {
+                    showError('Invalid email or password. Please try again.')
+                } else {
+                    showError(error.message)
+                }
+                setLoading(false)
+                return
+            }
+
+            if (data.user) {
+                showSuccess('Successfully signed in!')
+                // Clear form fields
+                setEmail('')
+                setPassword('')
+                // Redirect to accounts
+                router.push('/accounts')
+            }
+        } catch (error) {
+            console.error('Login error:', error)
+            showError('An unexpected error occurred. Please try again.')
+        } finally {
             setLoading(false)
-            // Clear form fields
-            setEmail('')
-            setPassword('')
-            alert('Login functionality removed - UI only')
-        }, 1000)
+        }
     }
 
-    const handleSocialLogin = (provider: string) => {
+    const handleSocialLogin = async (provider: 'google' | 'apple') => {
         setSocialLoading(provider)
         
-        // Simulate social login process
-        setTimeout(() => {
-            console.log(`${provider} login attempt`)
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider,
+                options: {
+                    redirectTo: `${window.location.origin}/auth/callback`
+                }
+            })
+
+            if (error) {
+                showError(`Failed to sign in with ${provider}: ${error.message}`)
+                setSocialLoading(null)
+            }
+            // If successful, the user will be redirected to the OAuth provider
+        } catch (error) {
+            console.error(`${provider} login error:`, error)
+            showError(`An unexpected error occurred with ${provider} sign in.`)
             setSocialLoading(null)
-            alert(`${provider} login functionality removed - UI only`)
-        }, 1000)
+        }
     }
 
     return (
@@ -116,9 +157,9 @@ export default function Login() {
                                 <label htmlFor="password" className="block text-sm font-medium text-[var(--text)]">
                                     *Password
                                 </label>
-                                <a href="/forgot-password" className="text-sm hover:text-[var(--accent-main)] transition-colors cursor-pointer">
+                                <span className="text-sm text-gray-500">
                                     Forgot password?
-                                </a>
+                                </span>
                             </div>
                             <div className="relative">
                                 <input
