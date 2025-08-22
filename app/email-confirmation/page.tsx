@@ -48,10 +48,7 @@ export default function EmailConfirmation() {
         try {
             const { error } = await supabase.auth.resend({
                 type: 'signup',
-                email: email,
-                options: {
-                    emailRedirectTo: `${window.location.origin}/auth/callback`
-                }
+                email: email
             })
 
             if (error) {

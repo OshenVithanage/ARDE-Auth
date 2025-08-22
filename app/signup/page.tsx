@@ -11,7 +11,6 @@ export default function Signup() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
-    const [socialLoading, setSocialLoading] = useState<string | null>(null)
     const { showError, showWarning, showSuccess } = useToast()
     const supabase = createClientComponentClient()
     const router = useRouter()
@@ -40,8 +39,7 @@ export default function Signup() {
                 options: {
                     data: {
                         full_name: name,
-                    },
-                    emailRedirectTo: `${window.location.origin}/auth/callback`
+                    }
                 }
             })
 
@@ -78,25 +76,27 @@ export default function Signup() {
     }
 
     const handleSocialSignup = async (provider: 'google' | 'apple') => {
-        setSocialLoading(provider)
-        
         try {
-            const { error } = await supabase.auth.signInWithOAuth({
-                provider,
+            setLoading(true);
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: provider,
                 options: {
-                    redirectTo: `${window.location.origin}/auth/callback`
-                }
-            })
+                    redirectTo: `${window.location.origin}/accounts`,
+                },
+            });
 
             if (error) {
-                showError(`Failed to sign up with ${provider}: ${error.message}`)
-                setSocialLoading(null)
+                console.error('OAuth error:', error);
+                showError(`Failed to sign up with ${provider}. Please try again.`);
+                setLoading(false);
+                return;
             }
-            // If successful, the user will be redirected to the OAuth provider
+
+            // The OAuth flow will redirect the user, so we don't need to do anything else here
         } catch (error) {
-            console.error(`${provider} signup error:`, error)
-            showError(`An unexpected error occurred with ${provider} sign up.`)
-            setSocialLoading(null)
+            console.error('OAuth error:', error);
+            showError(`An unexpected error occurred with ${provider} authentication. Please try again.`);
+            setLoading(false);
         }
     }
 
@@ -308,32 +308,24 @@ export default function Signup() {
                         {/* Google sign up button */}
                         <button
                             onClick={() => handleSocialSignup('google')}
-                            disabled={loading || socialLoading !== null}
+                            disabled={loading}
                             className="w-full bg-[var(--primary)] border border-[var(--border)] text-[var(--text)] py-2 px-4 rounded-lg font-medium hover:bg-[var(--secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-main)] focus:ring-offset-2 transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {socialLoading === 'google' ? (
-                                <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                            ) : (
-                                <svg className="w-6 h-6 text-black dark:text-white" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M915.2 448l-4.2-17.8H524V594h231.2c-24 114-135.4 174-226.4 174-66.2 0-136-27.8-182.2-72.6-47.4-46-77.6-113.8-77.6-183.6 0-69 31-138 76.2-183.4 45-45.2 113.2-70.8 181-70.8 77.6 0 133.2 41.2 154 60l116.4-115.8c-34.2-30-128-105.6-274.2-105.6-112.8 0-221 43.2-300 122C144.4 295.8 104 408 104 512s38.2 210.8 113.8 289c80.8 83.4 195.2 127 313 127 107.2 0 208.8-42 281.2-118.2 71.2-75 108-178.8 108-287.6 0-45.8-4.6-73-4.8-74.2z" fill="currentColor"/>
-                                </svg>
-                            )}
+                            <svg className="w-6 h-6 text-black dark:text-white" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M915.2 448l-4.2-17.8H524V594h231.2c-24 114-135.4 174-226.4 174-66.2 0-136-27.8-182.2-72.6-47.4-46-77.6-113.8-77.6-183.6 0-69 31-138 76.2-183.4 45-45.2 113.2-70.8 181-70.8 77.6 0 133.2 41.2 154 60l116.4-115.8c-34.2-30-128-105.6-274.2-105.6-112.8 0-221 43.2-300 122C144.4 295.8 104 408 104 512s38.2 210.8 113.8 289c80.8 83.4 195.2 127 313 127 107.2 0 208.8-42 281.2-118.2 71.2-75 108-178.8 108-287.6 0-45.8-4.6-73-4.8-74.2z" fill="currentColor"/>
+                            </svg>
                             <span>Continue with Google</span>
                         </button>
 
                         {/* Apple sign up button */}
                         <button
                             onClick={() => handleSocialSignup('apple')}
-                            disabled={loading || socialLoading !== null}
+                            disabled={loading}
                             className="w-full bg-[var(--primary)] border border-[var(--border)] text-[var(--text)] py-2 px-4 rounded-lg font-medium hover:bg-[var(--secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-main)] focus:ring-offset-2 transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {socialLoading === 'apple' ? (
-                                <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                            ) : (
-                                <svg className="w-6 h-6 text-black dark:text-white" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.09997 22C7.78997 22.05 6.79997 20.68 5.95997 19.47C4.24997 17 2.93997 12.45 4.69997 9.39C5.56997 7.87 7.12997 6.91 8.81997 6.88C10.1 6.86 11.32 7.75 12.11 7.75C12.89 7.75 14.37 6.68 15.92 6.84C16.57 6.87 18.39 7.1 19.56 8.82C19.47 8.88 17.39 10.1 17.41 12.63C17.44 15.65 20.06 16.66 20.09 16.67C20.06 16.74 19.67 18.11 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z" fill="currentColor"/>
-                                </svg>
-                            )}
+                            <svg className="w-6 h-6 text-black dark:text-white" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.09997 22C7.78997 22.05 6.79997 20.68 5.95997 19.47C4.24997 17 2.93997 12.45 4.69997 9.39C5.56997 7.87 7.12997 6.91 8.81997 6.88C10.1 6.86 11.32 7.75 12.11 7.75C12.89 7.75 14.37 6.68 15.92 6.84C16.57 6.87 18.39 7.1 19.56 8.82C19.47 8.88 17.39 10.1 17.41 12.63C17.44 15.65 20.06 16.66 20.09 16.67C20.06 16.74 19.67 18.11 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z" fill="currentColor"/>
+                            </svg>
                             <span>Continue with Apple</span>
                         </button>
                     </form>

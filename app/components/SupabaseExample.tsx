@@ -30,16 +30,6 @@ export default function SupabaseExample() {
     return () => subscription.unsubscribe()
   }, [supabase.auth])
 
-  const handleSignIn = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'github',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`
-      }
-    })
-    if (error) console.error('Error signing in:', error.message)
-  }
-
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut()
     if (error) console.error('Error signing out:', error.message)
@@ -66,12 +56,7 @@ export default function SupabaseExample() {
       ) : (
         <div>
           <p className="mb-4">You are not signed in.</p>
-          <button
-            onClick={handleSignIn}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-          >
-            Sign In with GitHub
-          </button>
+          <p className="text-gray-600">Please use the main authentication pages to sign in.</p>
         </div>
       )}
     </div>

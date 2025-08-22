@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
-import { createBrowserClient } from '@supabase/ssr'
+import { createBrowserClient, createServerClient } from '@supabase/ssr'
+import { type CookieOptions, type Cookies } from '@supabase/ssr'
 
 // Environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -27,11 +28,36 @@ export const createServerComponentClient = () => {
 }
 
 // Create a Supabase client for API routes
-export const createRouteHandlerClient = () => {
+export const createRouteHandlerClient = (cookieStore?: { cookies: Cookies }) => {
+  if (cookieStore) {
+    return createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() {
+          return cookieStore.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.cookies.set(name, value, options)
+            })
+          } catch (error) {
+            // Handle errors silently in production
+            console.error('Error setting cookies:', error)
+          }
+        },
+      },
+      auth: {
+        detectSessionInUrl: true
+      }
+    })
+  }
+  
+  // Fallback to regular client if no cookie store provided
   return createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
+      detectSessionInUrl: true
     },
   })
 }

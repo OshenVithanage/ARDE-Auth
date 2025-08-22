@@ -16,25 +16,6 @@ export default function ResetPassword() {
     const searchParams = useSearchParams()
     const router = useRouter()
 
-    // Check for hash fragment in URL (for OAuth callback)
-    useEffect(() => {
-        // Handle OAuth callback in the hash fragment
-        const hash = window.location.hash.substring(1)
-        if (hash) {
-            const params = new URLSearchParams(hash)
-            const accessToken = params.get('access_token')
-            const refreshToken = params.get('refresh_token')
-            
-            if (accessToken && refreshToken) {
-                // Set the session
-                supabase.auth.setSession({
-                    access_token: accessToken,
-                    refresh_token: refreshToken,
-                })
-            }
-        }
-    }, [supabase])
-
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault()
         
@@ -112,27 +93,24 @@ export default function ResetPassword() {
                 <div className="flex-1 flex items-center justify-center p-8 bg-[var(--background)]">
                     <div className="w-full max-w-md space-y-8 text-center">
                         <div className="space-y-4">
-                            {/* Success icon */}
-                            <div className="mx-auto w-16 h-16 bg-[var(--accent-main)] rounded-full flex items-center justify-center">
-                                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
                             </div>
-
-                            <h2 className="text-3xl font-bold text-[var(--text)]">Password Reset</h2>
-                            
+                            <h2 className="text-2xl font-bold text-[var(--text)]">Password Reset Complete!</h2>
                             <p className="text-gray-600">
-                                Your password has been successfully reset. You can now sign in with your new password.
+                                Your password has been successfully updated. You can now sign in with your new password.
                             </p>
                         </div>
-
-                        <div className="pt-4">
-                            <a 
-                                href="/login" 
-                                className="inline-block w-full bg-[var(--accent-main)] text-white py-2 px-4 rounded-lg font-medium hover:bg-[var(--accent-main)]/80 focus:outline-none focus:ring-2 focus:ring-[var(--accent-main)] focus:ring-offset-2 transition-all"
+                        
+                        <div className="space-y-3">
+                            <button
+                                onClick={() => router.push('/login')}
+                                className="w-full bg-[var(--accent-main)] text-white py-2 px-4 rounded-lg font-medium hover:bg-[var(--accent-main)]/80 focus:outline-none focus:ring-2 focus:ring-[var(--accent-main)] focus:ring-offset-2 transition-all"
                             >
-                                Sign in
-                            </a>
+                                Sign In
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -169,14 +147,11 @@ export default function ResetPassword() {
                 <div className="absolute inset-0 bg-gradient-to-r from-[var(--accent-main)]/20 to-transparent pointer-events-none" />
             </div>
 
-            {/* Right side - Reset Password form */}
+            {/* Right side - Reset password form */}
             <div className="flex-1 flex items-center justify-center p-8 bg-[var(--background)]">
                 <div className="w-full max-w-md space-y-8">
                     <div className="text-left text-2xl font-bold">
                         <h2 className="text-3xl font-bold text-[var(--text)]">Reset Password</h2>
-                        <p className="text-gray-600 mt-2">
-                            Enter your new password below.
-                        </p>
                     </div>
 
                     <form className="space-y-3.5" onSubmit={handleSubmit}>
@@ -194,7 +169,7 @@ export default function ResetPassword() {
                                     onChange={(e) => setPassword(e.target.value)}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
-                                            document.getElementById('reset-button')?.click();
+                                            document.getElementById('reset-password-button')?.click();
                                         }
                                     }}
                                     tabIndex={1}
@@ -274,7 +249,7 @@ export default function ResetPassword() {
                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
-                                            document.getElementById('reset-button')?.click();
+                                            document.getElementById('reset-password-button')?.click();
                                         }
                                     }}
                                     tabIndex={2}
@@ -286,9 +261,9 @@ export default function ResetPassword() {
                             </div>
                         </div>
 
-                        {/* Reset button */}
+                        {/* Reset password button */}
                         <button
-                            id="reset-button"
+                            id="reset-password-button"
                             type="submit"
                             onClick={handleSubmit}
                             disabled={loading}
@@ -297,18 +272,18 @@ export default function ResetPassword() {
                             {loading ? (
                                 <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                             ) : null}
-                            <span>{loading ? 'Resetting...' : 'Reset Password'}</span>
+                            <span>{loading ? 'Updating password...' : 'Update Password'}</span>
                         </button>
-
-                        {/* Footer links */}
-                        <div className="text-center space-y-2">
-                            <div className="flex justify-center space-x-4 text-sm">
-                                <a href="/login" className="text-gray-500 hover:text-[var(--accent-main)] transition-colors cursor-pointer">
-                                    Back to sign in
-                                </a>
-                            </div>
-                        </div>
                     </form>
+
+                    {/* Footer links */}
+                    <div className="text-center space-y-2">
+                        <div className="flex justify-center space-x-4 text-sm">
+                            <a href="/login" className="text-gray-500 hover:text-[var(--accent-main)] transition-colors cursor-pointer">
+                                Back to Sign In
+                            </a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
