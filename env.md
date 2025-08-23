@@ -1,0 +1,4 @@
+NEXT_PUBLIC_SUPABASE_URL=ARDE_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=ARDE_supabase_anon_key
+
+SUPABASE_SERVICE_ROLE_KEY=ARDE_supabase_service_role_key
