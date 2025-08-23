@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { createBrowserClient, createServerClient } from '@supabase/ssr'
-import { type CookieOptions, type Cookies } from '@supabase/ssr'
+import { type CookieOptions } from '@supabase/ssr'
 
 // Environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -28,7 +28,12 @@ export const createServerComponentClient = () => {
 }
 
 // Create a Supabase client for API routes
-export const createRouteHandlerClient = (cookieStore?: { cookies: Cookies }) => {
+export const createRouteHandlerClient = (cookieStore?: { 
+  cookies: {
+    getAll: () => Promise<{ name: string; value: string }[]>;
+    set: (name: string, value: string, options: CookieOptions) => void;
+  }
+}) => {
   if (cookieStore) {
     return createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
