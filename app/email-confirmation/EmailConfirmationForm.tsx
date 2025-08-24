@@ -97,7 +97,7 @@ export default function EmailConfirmationForm() {
             if (error) {
                 showError(`Verification failed: ${error.message}`)
             } else if (data.user) {
-                showSuccess('Email verified successfully! You can now sign in.')
+                showSuccess('Email verified successfully!')
                 localStorage.removeItem('signup_email')
                 router.push('/login')
             }
