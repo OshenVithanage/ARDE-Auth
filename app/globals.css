@@ -160,6 +160,7 @@
   --accent-focus: #5a64a8;
   --accent-light: #a8b1d6;
   --accent-dark: #4a5397;
+  --accent-disabled: #9ba4d4;
   /* For backward compatibility */
   --foreground: var(--text);
 }
@@ -180,6 +181,7 @@
   --accent-focus: #b5bde4;
   --accent-light: #c2c9e8;
   --accent-dark: #5d6693;
+  --accent-disabled: #9ba4d4;
   /* For backward compatibility */
   --foreground: var(--text);
   }

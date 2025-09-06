@@ -3,15 +3,22 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
+import { useChatContext } from '../../contexts/ChatContext';
 import { gsap } from 'gsap';
 import { Sidebar, useSidebar } from '../../sidebar';
+import { chatService } from '../../lib/chatService';
+import { useToast } from '../../components/messaging/ToastProvider';
 
 export default function NewChatPage() {
   const { user, loading } = useAuth();
+  const { setInitialMessage } = useChatContext();
   const router = useRouter();
   const [displayName, setDisplayName] = useState<string>('');
+  const [prompt, setPrompt] = useState<string>('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { isExpanded, toggleSidebar } = useSidebar();
+  const { showError, showSuccess } = useToast();
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
 
   useEffect(() => {
     if (!loading) {
@@ -64,10 +71,51 @@ export default function NewChatPage() {
     }
   };
 
+  // Handle textarea change
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setPrompt(e.target.value);
+  };
+
+  // Handle send button click
+  const handleSendClick = async () => {
+    // Trim whitespace to check if prompt is actually empty
+    if (!prompt.trim() || isCreatingChat) {
+      return; // Don't send empty prompts or if already creating
+    }
+
+    try {
+      setIsCreatingChat(true);
+      
+      // Store the initial message in context
+      setInitialMessage(prompt.trim());
+      
+      // Create new chat in database
+      const chatData = await chatService.createChat(user!.id);
+      
+      // Show success message
+      showSuccess('Chat created successfully!');
+      
+      // Redirect to the new chat page
+      router.push(`/c/${chatData.chat_id}`);
+    } catch (error) {
+      console.error('Error creating chat:', error);
+      showError('Failed to create chat. Please try again.');
+      setIsCreatingChat(false);
+    }
+  };
+
+  // Handle Enter key press (without Shift)
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendClick();
+    }
+  };
+
   // Show loading state while checking authentication
   if (loading) {
     return (
-      <div className="min-h-screen flex" style={{ background: 'var(--background)' }}>
+      <div className="flex" style={{ background: 'var(--background)', height: '100vh' }}>
         <Sidebar isExpanded={isExpanded} onToggle={toggleSidebar} />
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full max-w-2xl space-y-3">
@@ -116,7 +164,7 @@ export default function NewChatPage() {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: 'var(--background)' }}>
+    <div className="flex" style={{ background: 'var(--background)', height: '100vh' }}>
       <Sidebar isExpanded={isExpanded} onToggle={toggleSidebar} />
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-2xl space-y-3">
@@ -131,6 +179,9 @@ export default function NewChatPage() {
           <div className="relative">
             <textarea
               ref={textareaRef}
+              value={prompt}
+              onChange={handleTextareaChange}
+              onKeyDown={handleKeyDown}
               placeholder="Enter Your prompt here."
               className="w-full h-32 px-6 py-4 text-base rounded-2xl resize-none focus:outline-none custom-scrollbar"
               style={{ 
@@ -168,17 +219,45 @@ export default function NewChatPage() {
             <button
               className="w-9 h-9 rounded-lg font-medium transition-all duration-200 hover:scale-105 focus:outline-none cursor-pointer flex items-center justify-center"
               style={{ 
-                backgroundColor: 'var(--accent-main)',
+                backgroundColor: prompt.trim() ? 'var(--accent-main)' : 'var(--accent-disabled)',
                 border: 'none'
               }}
-              onMouseEnter={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'var(--accent-hover)'}
-              onMouseLeave={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'var(--accent-main)'}
-              onFocus={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'var(--accent-focus)'}
-              onBlur={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'var(--accent-main)'}
+              disabled={!prompt.trim() || isCreatingChat}
+              onClick={handleSendClick}
+              onMouseEnter={(e) => {
+                if (prompt.trim()) {
+                  (e.target as HTMLButtonElement).style.backgroundColor = 'var(--accent-hover)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (prompt.trim()) {
+                  (e.target as HTMLButtonElement).style.backgroundColor = 'var(--accent-main)';
+                } else {
+                  (e.target as HTMLButtonElement).style.backgroundColor = 'var(--accent-disabled)';
+                }
+              }}
+              onFocus={(e) => {
+                if (prompt.trim()) {
+                  (e.target as HTMLButtonElement).style.backgroundColor = 'var(--accent-focus)';
+                } else {
+                  (e.target as HTMLButtonElement).style.backgroundColor = 'var(--accent-disabled)';
+                }
+              }}
+              onBlur={(e) => {
+                if (prompt.trim()) {
+                  (e.target as HTMLButtonElement).style.backgroundColor = 'var(--accent-main)';
+                } else {
+                  (e.target as HTMLButtonElement).style.backgroundColor = 'var(--accent-disabled)';
+                }
+              }}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
-                <path d="M14.4376 15.3703L12.3042 19.5292C11.9326 20.2537 10.8971 20.254 10.525 19.5297L4.24059 7.2971C3.81571 6.47007 4.65077 5.56156 5.51061 5.91537L18.5216 11.2692C19.2984 11.5889 19.3588 12.6658 18.6227 13.0704L14.4376 15.3703ZM14.4376 15.3703L5.09594 6.90886" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
+              {isCreatingChat ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                  <path d="M14.4376 15.3703L12.3042 19.5292C11.9326 20.2537 10.8971 20.254 10.525 19.5297L4.24059 7.2971C3.81571 6.47007 4.65077 5.56156 5.51061 5.91537L18.5216 11.2692C19.2984 11.5889 19.3588 12.6658 18.6227 13.0704L14.4376 15.3703ZM14.4376 15.3703L5.09594 6.90886" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              )}
             </button>
           </div>
         </div>
