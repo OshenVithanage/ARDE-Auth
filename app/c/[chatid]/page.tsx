@@ -7,10 +7,11 @@ import { useChatContext } from '../../contexts/ChatContext';
 import { Sidebar, useSidebar } from '../../sidebar';
 import { useToast } from '../../components/messaging/ToastProvider';
 import { chatService } from '../../lib/chatService';
+import { createClientComponentClient } from '../../lib/supabase';
 import { gsap } from 'gsap';
 
 interface Message {
-  id: string;
+  id: number;
   content: string;
   role: 'user' | 'assistant';
   created_at: string;
@@ -28,11 +29,25 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [hasSentInitialMessage, setHasSentInitialMessage] = useState(false);
-  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
-  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [hoveredMessageId, setHoveredMessageId] = useState<number | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const errorShownRef = useRef(false); // Ref to track if error was already shown
+  const initialMessageAttemptedRef = useRef(false); // Ref to track if we've attempted to send initial message
+  const supabase = createClientComponentClient();
+
+  // Function to deduplicate messages by ID
+  const deduplicateMessages = (messages: Message[]): Message[] => {
+    const seen = new Set<number>();
+    return messages.filter(message => {
+      if (seen.has(message.id)) {
+        return false;
+      }
+      seen.add(message.id);
+      return true;
+    });
+  };
 
   // Scroll to bottom of messages
   const scrollToBottom = () => {
@@ -77,7 +92,7 @@ export default function ChatPage() {
   };
 
   // Copy message to clipboard
-  const copyMessageToClipboard = async (content: string, messageId: string) => {
+  const copyMessageToClipboard = async (content: string, messageId: number) => {
     try {
       // Check if clipboard API is available
       if (!navigator.clipboard) {
@@ -117,6 +132,11 @@ export default function ChatPage() {
         return;
       }
 
+      // Reset refs for new chat
+      errorShownRef.current = false;
+      initialMessageAttemptedRef.current = false;
+      setHasSentInitialMessage(false);
+
       try {
         // Verify chat exists and belongs to user
         const chatData = await chatService.getChat(chatid as string, user.id);
@@ -124,8 +144,12 @@ export default function ChatPage() {
         
         // Fetch existing messages for this chat
         const chatMessages = await chatService.getMessages(chatid as string);
-        setMessages(chatMessages);
+        setMessages(deduplicateMessages(chatMessages));
+        
+        // Mark initialization as complete
         setIsInitialLoad(false);
+        
+        console.log('Chat initialized, messages loaded:', chatMessages.length);
       } catch (error) {
         console.error('Error initializing chat:', error);
         setIsInitialLoad(false);
@@ -141,30 +165,100 @@ export default function ChatPage() {
     if (chatid && user) {
       initializeChat();
     }
-  }, [user, authLoading, chatid, router, showError]);
+  }, [user, authLoading, chatid, router]);
 
-  // Send initial message if available
+  // Set up real-time subscription for messages
+  useEffect(() => {
+    if (!chatid || !user || isInitialLoad) return;
+
+    const channel = supabase
+      .channel('message-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'Messages',
+          filter: `chat_id=eq.${chatid}`,
+        },
+        (payload) => {
+          console.log('Real-time message change:', payload);
+          
+          if (payload.eventType === 'INSERT') {
+            // Add new message to the list
+            const newMessage = payload.new as Message;
+            setMessages(prev => {
+              // Check if we have a temporary message with the same content that should be replaced
+              const tempMessageIndex = prev.findIndex(msg => 
+                msg.id < 0 && 
+                msg.content === newMessage.content && 
+                msg.role === newMessage.role
+              );
+              
+              let newMessages;
+              if (tempMessageIndex !== -1) {
+                // Replace the temporary message with the real one
+                newMessages = [...prev];
+                newMessages[tempMessageIndex] = newMessage;
+              } else {
+                // Add new message
+                newMessages = [...prev, newMessage];
+              }
+              
+              // Always deduplicate to ensure no duplicate IDs
+              return deduplicateMessages(newMessages);
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            // Update existing message
+            const updatedMessage = payload.new as Message;
+            setMessages(prev => 
+              prev.map(msg => 
+                msg.id === updatedMessage.id ? updatedMessage : msg
+              )
+            );
+          } else if (payload.eventType === 'DELETE') {
+            // Remove deleted message
+            const deletedMessage = payload.old as Message;
+            setMessages(prev => 
+              prev.filter(msg => msg.id !== deletedMessage.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [chatid, user, isInitialLoad, supabase]);
+
+  // Send initial message if available - trigger immediately when chat is ready
   useEffect(() => {
     const sendInitialMessage = async () => {
+      // Only send if we have an initial message and haven't attempted to send it yet
       if (
         !isInitialLoad && 
         initialMessage && 
-        !hasSentInitialMessage && 
-        messages.length === 0
+        !initialMessageAttemptedRef.current &&
+        chatid &&
+        user
       ) {
+        console.log('Attempting to send initial message:', initialMessage);
+        initialMessageAttemptedRef.current = true;
+        setHasSentInitialMessage(true);
+        
         try {
           setIsLoading(true);
-          setHasSentInitialMessage(true);
           
           // Add user message to UI immediately
           const userMessage: Message = {
-            id: `temp-${Date.now()}`,
+            id: -Date.now(), // Use negative number for temp IDs
             content: initialMessage,
             role: 'user',
             created_at: new Date().toISOString(),
           };
 
-          setMessages(prev => [...prev, userMessage]);
+          setMessages(prev => deduplicateMessages([...prev, userMessage]));
 
           // Add user message to database
           const savedUserMessage = await chatService.addMessage(
@@ -173,11 +267,13 @@ export default function ChatPage() {
             'user'
           );
 
+          console.log('Initial message saved to database:', savedUserMessage);
+
           // Replace temporary message with saved message
           setMessages(prev => 
-            prev.map(msg => 
+            deduplicateMessages(prev.map(msg => 
               msg.id === userMessage.id ? { ...savedUserMessage, created_at: savedUserMessage.created_at } : msg
-            )
+            ))
           );
 
           // Clear the initial message from context
@@ -196,7 +292,7 @@ export default function ChatPage() {
             );
 
             // Add AI message to UI
-            setMessages(prev => [...prev, { ...savedAiMessage, created_at: savedAiMessage.created_at }]);
+            setMessages(prev => deduplicateMessages([...prev, { ...savedAiMessage, created_at: savedAiMessage.created_at }]));
             
             // Update chat message count
             await chatService.updateChatMessageCount(chatid as string, 2); // 1 user + 1 AI
@@ -207,13 +303,15 @@ export default function ChatPage() {
           console.error('Error sending initial message:', error);
           showError('Failed to send initial message');
           setIsLoading(false);
-          setHasSentInitialMessage(true);
         }
       }
     };
 
-    sendInitialMessage();
-  }, [isInitialLoad, initialMessage, hasSentInitialMessage, messages.length, chatid, setInitialMessage, showError]);
+    // Send immediately when conditions are met
+    if (!isInitialLoad && initialMessage && !initialMessageAttemptedRef.current) {
+      sendInitialMessage();
+    }
+  }, [isInitialLoad, initialMessage, chatid, user, setInitialMessage, showError]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(e.target.value);
@@ -227,13 +325,13 @@ export default function ChatPage() {
       
       // Add user message to UI immediately
       const userMessage: Message = {
-        id: `temp-${Date.now()}`,
+        id: -Date.now(), // Use negative number for temp IDs
         content: inputValue.trim(),
         role: 'user',
         created_at: new Date().toISOString(),
       };
 
-      setMessages(prev => [...prev, userMessage]);
+      setMessages(prev => deduplicateMessages([...prev, userMessage]));
       const userMessageContent = inputValue.trim();
       setInputValue('');
 
@@ -246,9 +344,9 @@ export default function ChatPage() {
 
       // Replace temporary message with saved message
       setMessages(prev => 
-        prev.map(msg => 
+        deduplicateMessages(prev.map(msg => 
           msg.id === userMessage.id ? { ...savedUserMessage, created_at: savedUserMessage.created_at } : msg
-        )
+        ))
       );
 
       // TODO: Send message to AI service and get response
@@ -264,7 +362,7 @@ export default function ChatPage() {
         );
 
         // Add AI message to UI
-        setMessages(prev => [...prev, { ...savedAiMessage, created_at: savedAiMessage.created_at }]);
+        setMessages(prev => deduplicateMessages([...prev, { ...savedAiMessage, created_at: savedAiMessage.created_at }]));
         
         // Update chat message count
         await chatService.updateChatMessageCount(chatid as string, messages.length + 2);
@@ -290,29 +388,70 @@ export default function ChatPage() {
     return (
       <div className="flex" style={{ background: 'var(--background)', height: '100vh' }}>
         <Sidebar isExpanded={isExpanded} onToggle={toggleSidebar} />
-        <div className="flex-1 flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl space-y-3">
-            {/* Skeleton for messages */}
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-start space-x-3">
-                  <div 
-                    className="w-8 h-8 rounded-full animate-pulse"
-                    style={{ backgroundColor: 'var(--secondary)' }}
-                  ></div>
-                  <div 
-                    className="flex-1 h-16 rounded-lg animate-pulse"
-                    style={{ backgroundColor: 'var(--secondary)' }}
-                  ></div>
+        <div className="flex-1 flex flex-col" style={{ height: '100vh' }}>
+          {/* Messages container skeleton - matches real layout */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="max-w-2xl mx-auto space-y-6">
+              {/* Skeleton messages - mix of user and assistant */}
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className={`flex flex-col ${i % 2 === 0 ? 'items-end' : 'items-start'}`}>
+                  {i % 2 === 0 ? (
+                    // User message skeleton (right-aligned)
+                    <div 
+                      className="max-w-[80%] rounded-2xl rounded-br-none px-4 py-3 animate-pulse"
+                      style={{ 
+                        backgroundColor: 'var(--secondary)',
+                        height: '60px',
+                        minWidth: '200px'
+                      }}
+                    ></div>
+                  ) : (
+                    // Assistant message skeleton (left-aligned)
+                    <div className="max-w-[80%] py-3">
+                      <div 
+                        className="animate-pulse rounded"
+                        style={{ 
+                          backgroundColor: 'var(--secondary)',
+                          height: '80px',
+                          minWidth: '250px'
+                        }}
+                      ></div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
-            
-            {/* Skeleton for input */}
-            <div 
-              className="w-full h-32 rounded-2xl animate-pulse mt-8"
-              style={{ backgroundColor: 'var(--secondary)' }}
-            ></div>
+          </div>
+
+          {/* Input area skeleton - matches real layout */}
+          <div className="p-4">
+            <div className="w-full max-w-2xl mx-auto space-y-3">
+              {/* Main prompt input textbox skeleton */}
+              <div className="relative">
+                <div 
+                  className="w-full h-32 rounded-2xl animate-pulse"
+                  style={{ backgroundColor: 'var(--secondary)' }}
+                ></div>
+              </div>
+
+              {/* Second box skeleton */}
+              <div 
+                className="w-full h-13 rounded-2xl flex items-center justify-between px-3 animate-pulse"
+                style={{ backgroundColor: 'var(--secondary)' }}
+              >
+                {/* Plus button skeleton */}
+                <div 
+                  className="w-9 h-9 rounded-lg animate-pulse"
+                  style={{ backgroundColor: 'var(--background)' }}
+                ></div>
+
+                {/* Send button skeleton */}
+                <div 
+                  className="w-9 h-9 rounded-lg animate-pulse"
+                  style={{ backgroundColor: 'var(--background)' }}
+                ></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -43,6 +43,23 @@ export const chatService = {
     }
   },
 
+  // Get user chats
+  getUserChats: async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('Chats')
+        .select('chat_id, created_at, number_of_messages')
+        .eq('Owner', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching user chats:', error);
+      throw error;
+    }
+  },
+
   // Get messages for a chat
   getMessages: async (chatId: string) => {
     try {
@@ -89,7 +106,7 @@ export const chatService = {
             error.message.includes('does not exist')) {
           console.warn('Messages table not found, returning mock message');
           return {
-            id: `mock-${Date.now()}`,
+            id: Date.now(),
             chat_id: chatId,
             content,
             role,
