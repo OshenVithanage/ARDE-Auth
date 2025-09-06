@@ -12,7 +12,7 @@ export default function Home() {
     if (!loading) {
       if (user) {
         // User is logged in, redirect to accounts
-        router.push('/accounts')
+        router.push('/c/new')
       } else {
         // User is not logged in, redirect to login
         router.push('/login')

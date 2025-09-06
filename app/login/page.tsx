@@ -12,7 +12,7 @@ export default function Login() {
     useEffect(() => {
         // If user is already logged in, redirect to accounts
         if (!loading && user) {
-            router.push('/accounts')
+            router.push('/c/new')
         }
     }, [user, loading, router])
 

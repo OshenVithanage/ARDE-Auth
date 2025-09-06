@@ -49,8 +49,8 @@ export default function LoginForm() {
                 // Clear form fields
                 setEmail('')
                 setPassword('')
-                // Redirect to accounts
-                router.push('/accounts')
+                // Redirect to New chat
+                router.push('/c/new')
             }
         } catch (error) {
             console.error('Login error:', error)
@@ -66,7 +66,7 @@ export default function LoginForm() {
             const { data, error } = await supabase.auth.signInWithOAuth({
                 provider: provider,
                 options: {
-                    redirectTo: `${window.location.origin}/accounts`,
+                    redirectTo: `${window.location.origin}/c/new`,
                 },
             });
 
