@@ -279,10 +279,43 @@ export default function ChatPage() {
           // Clear the initial message from context
           setInitialMessage(null);
 
-          // TODO: Send message to AI service and get response
-          // This is a placeholder for the actual AI API call
-          setTimeout(async () => {
-            const aiMessageContent = `This is a placeholder response to: "${initialMessage}"`;
+          // Generate chat name based on the first message (run in background)
+          try {
+            const response = await fetch('/api/chat-name', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ firstMessage: initialMessage }),
+            });
+            
+            const data = await response.json();
+            const chatName = data.chatName || 'New Chat';
+            
+            await chatService.updateChatName(chatid as string, chatName);
+            console.log('Chat name generated and updated:', chatName);
+          } catch (error) {
+            console.error('Error generating chat name:', error);
+            // Don't show error to user as this is a background operation
+          }
+
+          // Send message to AI service and get response
+          try {
+            const response = await fetch('/api/ai', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ prompt: initialMessage }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+              throw new Error(data.error || 'Failed to get AI response');
+            }
+
+            const aiMessageContent = data.response;
             
             // Add AI message to database
             const savedAiMessage = await chatService.addMessage(
@@ -298,7 +331,22 @@ export default function ChatPage() {
             await chatService.updateChatMessageCount(chatid as string, 2); // 1 user + 1 AI
             
             setIsLoading(false);
-          }, 1000);
+          } catch (error) {
+            console.error('Error getting AI response:', error);
+            showError('Failed to get AI response. Please try again.');
+            
+            // Add error message to UI
+            const errorMessageContent = "Sorry, I encountered an error processing your request. Please try again.";
+            const savedErrorMessage = await chatService.addMessage(
+              chatid as string,
+              errorMessageContent,
+              'assistant'
+            );
+            
+            setMessages(prev => deduplicateMessages([...prev, { ...savedErrorMessage, created_at: savedErrorMessage.created_at }]));
+            
+            setIsLoading(false);
+          }
         } catch (error) {
           console.error('Error sending initial message:', error);
           showError('Failed to send initial message');
@@ -349,10 +397,23 @@ export default function ChatPage() {
         ))
       );
 
-      // TODO: Send message to AI service and get response
-      // This is a placeholder for the actual AI API call
-      setTimeout(async () => {
-        const aiMessageContent = `This is a placeholder response to: "${userMessageContent}"`;
+      // Send message to AI service and get response
+      try {
+        const response = await fetch('/api/ai', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ prompt: userMessageContent }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to get AI response');
+        }
+
+        const aiMessageContent = data.response;
         
         // Add AI message to database
         const savedAiMessage = await chatService.addMessage(
@@ -368,7 +429,22 @@ export default function ChatPage() {
         await chatService.updateChatMessageCount(chatid as string, messages.length + 2);
         
         setIsLoading(false);
-      }, 1000);
+      } catch (error) {
+        console.error('Error getting AI response:', error);
+        showError('Failed to get AI response. Please try again.');
+        
+        // Add error message to UI
+        const errorMessageContent = "Sorry, I encountered an error processing your request. Please try again.";
+        const savedErrorMessage = await chatService.addMessage(
+          chatid as string,
+          errorMessageContent,
+          'assistant'
+        );
+        
+        setMessages(prev => deduplicateMessages([...prev, { ...savedErrorMessage, created_at: savedErrorMessage.created_at }]));
+        
+        setIsLoading(false);
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       showError('Failed to send message');

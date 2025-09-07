@@ -14,6 +14,7 @@ interface Chat {
   chat_id: string;
   created_at: string;
   number_of_messages: number;
+  name?: string;
 }
 
 export default function NewChatPage() {
@@ -375,7 +376,7 @@ export default function NewChatPage() {
                         }}
                       >
                         <div className="truncate">
-                          Chat from {new Date(chat.created_at).toLocaleDateString()}
+                          {chat.name || `Chat from ${new Date(chat.created_at).toLocaleDateString()}`}
                         </div>
                       </div>
                     ))}

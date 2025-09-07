@@ -48,7 +48,7 @@ export const chatService = {
     try {
       const { data, error } = await supabase
         .from('Chats')
-        .select('chat_id, created_at, number_of_messages')
+        .select('chat_id, created_at, number_of_messages, name')
         .eq('Owner', userId)
         .order('created_at', { ascending: false });
 
@@ -136,6 +136,24 @@ export const chatService = {
       return data;
     } catch (error) {
       console.error('Error updating chat message count:', error);
+      throw error;
+    }
+  },
+
+  // Update chat name
+  updateChatName: async (chatId: string, name: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('Chats')
+        .update({ name: name })
+        .eq('chat_id', chatId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating chat name:', error);
       throw error;
     }
   }
