@@ -28,7 +28,7 @@ export default function NewChatPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const secondBoxRef = useRef<HTMLDivElement>(null);
   const { isExpanded, toggleSidebar } = useSidebar();
-  const { showError, showSuccess } = useToast();
+  const { showError } = useToast();
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const supabase = createClientComponentClient();
 

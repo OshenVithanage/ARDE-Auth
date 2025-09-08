@@ -27,12 +27,12 @@ export default function ChatPage() {
   const { user, loading: authLoading } = useAuth();
   const { initialMessage, setInitialMessage } = useChatContext();
   const { isExpanded, toggleSidebar } = useSidebar();
-  const { showError, showSuccess } = useToast();
+  const { showError } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [hasSentInitialMessage, setHasSentInitialMessage] = useState(false);
+  const [, setHasSentInitialMessage] = useState(false);
   const [hoveredMessageId, setHoveredMessageId] = useState<number | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -77,7 +77,7 @@ export default function ChatPage() {
         }
 
         let fullResponse = '';
-        let tempMessageId = -Date.now();
+         const tempMessageId = -Date.now();
 
         // Create a temporary message for streaming
         const tempMessage: Message = {
@@ -122,7 +122,7 @@ export default function ChatPage() {
                     )
                   );
                 }
-              } catch (e) {
+              } catch {
                 // Ignore parsing errors for malformed chunks
                 console.warn('Failed to parse chunk:', data);
               }

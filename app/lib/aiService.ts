@@ -25,13 +25,12 @@ export const generateAIResponse = async (prompt: string, history: Array<{role: s
       throw new Error('GEMINI_API_KEY is not set in environment variables');
     }
     
-    // Add system prompt if available
-    const systemPrompt = process.env.SYSTEM_PROMPT || "You are a helpful AI assistant.";
+    // System prompt available via environment variable if needed
     
     // Format the conversation history for Gemini
     const chatHistory = history.map(msg => ({
       role: msg.role,
-      parts: msg.parts
+      parts: msg.parts.map(part => ({ text: part }))
     }));
     
     // Start a chat session with the model
