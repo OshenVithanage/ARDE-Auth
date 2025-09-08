@@ -278,7 +278,7 @@ export default function NewChatPage() {
             style={{ 
               background: 'var(--primary)',
               border: '1px solid var(--border)',
-              height: prompt.trim() || chats.length === 0 ? '60px' : '300px'
+              height: prompt.trim() || chats.length === 0 ? '60px' : '200px'
             }}
           >
             {/* Conditional rendering - only one group visible at a time */}
@@ -345,43 +345,45 @@ export default function NewChatPage() {
               </div>
             ) : (
               // Chat history - only visible when expanded
-              <div className="flex-1 overflow-y-auto px-5 mt-4">
-                <div className="text-sm font-medium mb-2" style={{ color: 'var(--text)' }}>
+              <div className="h-full flex flex-col">
+                <div className="text-sm font-medium mb-2 px-5 mt-4" style={{ color: 'var(--text)' }}>
                   Chat History
                 </div>
-                {isLoadingChats ? (
-                  <div className="space-y-2">
-                    {[1, 2, 3].map((i) => (
-                      <div 
-                        key={i} 
-                        className="h-8 rounded-lg animate-pulse"
-                        style={{ backgroundColor: 'var(--secondary)' }}
-                      ></div>
-                    ))}
-                  </div>
-                ) : chats.length === 0 ? (
-                  <div className="text-sm py-4 text-center" style={{ color: 'var(--text)' }}>
-                    No chat history yet
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {chats.map((chat) => (
-                      <div
-                        key={chat.chat_id}
-                        onClick={() => handleChatSelect(chat.chat_id)}
-                        className="px-3 py-2 rounded-lg cursor-pointer hover:bg-opacity-20 transition-colors truncate"
-                        style={{ 
-                          color: 'var(--text)',
-                          backgroundColor: 'var(--secondary)'
-                        }}
-                      >
-                        <div className="truncate">
-                          {chat.name || `Chat from ${new Date(chat.created_at).toLocaleDateString()}`}
+                <div className="flex-1 overflow-y-auto px-5 pb-4 custom-scrollbar">
+                  {isLoadingChats ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3].map((i) => (
+                        <div 
+                          key={i} 
+                          className="h-8 rounded-lg animate-pulse"
+                          style={{ backgroundColor: 'var(--secondary)' }}
+                        ></div>
+                      ))}
+                    </div>
+                  ) : chats.length === 0 ? (
+                    <div className="text-sm py-4 text-center" style={{ color: 'var(--text)' }}>
+                      No chat history yet
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {chats.map((chat) => (
+                        <div
+                          key={chat.chat_id}
+                          onClick={() => handleChatSelect(chat.chat_id)}
+                          className="px-3 py-2 rounded-lg cursor-pointer hover:bg-opacity-20 transition-colors truncate"
+                          style={{ 
+                            color: 'var(--text)',
+                            backgroundColor: 'var(--secondary)'
+                          }}
+                        >
+                          <div className="truncate">
+                            {chat.name || `Chat from ${new Date(chat.created_at).toLocaleDateString()}`}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

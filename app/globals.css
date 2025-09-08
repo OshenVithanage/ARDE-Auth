@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "highlight.js/styles/github-dark.css";
 
 /**
 * @license
@@ -226,4 +227,126 @@ body {
 
 .custom-scrollbar::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* Markdown styling for AI responses */
+.markdown-content {
+  line-height: 1.6;
+}
+
+.markdown-content pre {
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 14px;
+}
+
+.markdown-content code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.markdown-content blockquote {
+  border-left-width: 4px;
+  padding-left: 1rem;
+  margin: 1rem 0;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  margin: 1rem 0;
+  width: 100%;
+}
+
+.markdown-content th,
+.markdown-content td {
+  text-align: left;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+}
+
+.markdown-content th {
+  background-color: var(--secondary);
+  font-weight: 600;
+}
+
+/* Override highlight.js theme to match our app theme */
+.hljs {
+  background: var(--secondary) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #6a737d !important;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-subst {
+  color: #d73a49 !important;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag .hljs-attr {
+  color: #005cc5 !important;
+}
+
+.hljs-string,
+.hljs-doctag {
+  color: #032f62 !important;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-selector-id {
+  color: #6f42c1 !important;
+}
+
+.hljs-type,
+.hljs-class .hljs-title {
+  color: #d73a49 !important;
+}
+
+.hljs-tag,
+.hljs-name,
+.hljs-attribute {
+  color: #22863a !important;
+}
+
+.hljs-regexp,
+.hljs-link {
+  color: #032f62 !important;
+}
+
+.hljs-symbol,
+.hljs-bullet {
+  color: #e36209 !important;
+}
+
+.hljs-built_in,
+.hljs-builtin-name {
+  color: #005cc5 !important;
+}
+
+.hljs-meta {
+  color: #6a737d !important;
+}
+
+.hljs-deletion {
+  background: #ffeef0 !important;
+}
+
+.hljs-addition {
+  background: #f0fff4 !important;
+}
+
+.hljs-emphasis {
+  font-style: italic !important;
+}
+
+.hljs-strong {
+  font-weight: bold !important;
 } 

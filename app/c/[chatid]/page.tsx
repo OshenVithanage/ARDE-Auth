@@ -9,6 +9,10 @@ import { useToast } from '../../components/messaging/ToastProvider';
 import { chatService } from '../../lib/chatService';
 import { createClientComponentClient } from '../../lib/supabase';
 import { gsap } from 'gsap';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import type { Components } from 'react-markdown';
 
 interface Message {
   id: number;
@@ -46,6 +50,91 @@ export default function ChatPage() {
       }
       seen.add(message.id);
       return true;
+    });
+  };
+
+  // Function to handle streaming AI responses
+  const handleStreamingAIResponse = async (prompt: string): Promise<string> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const response = await fetch('/api/ai', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ prompt }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to get AI response');
+        }
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (!reader) {
+          throw new Error('No response body');
+        }
+
+        let fullResponse = '';
+        let tempMessageId = -Date.now();
+
+        // Create a temporary message for streaming
+        const tempMessage: Message = {
+          id: tempMessageId,
+          content: '',
+          role: 'assistant',
+          created_at: new Date().toISOString(),
+        };
+
+        // Add temporary message to UI
+        setMessages(prev => deduplicateMessages([...prev, tempMessage]));
+
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              
+              if (data === '[DONE]') {
+                // Stream is complete
+                resolve(fullResponse);
+                return;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.chunk) {
+                  fullResponse += parsed.chunk;
+                  
+                  // Update the temporary message with accumulated content
+                  setMessages(prev => 
+                    prev.map(msg => 
+                      msg.id === tempMessageId 
+                        ? { ...msg, content: fullResponse }
+                        : msg
+                    )
+                  );
+                }
+              } catch (e) {
+                // Ignore parsing errors for malformed chunks
+                console.warn('Failed to parse chunk:', data);
+              }
+            }
+          }
+        }
+
+        resolve(fullResponse);
+      } catch (error) {
+        console.error('Streaming error:', error);
+        reject(error);
+      }
     });
   };
 
@@ -117,8 +206,8 @@ export default function ChatPage() {
         setCopiedMessageId(null);
       }, 2000); // Show tick for 2 seconds
     } catch (error) {
-      console.error('Failed to copy message:', error);
-      showError('Failed to copy message');
+        console.error('Failed to copy message:', error);
+        showError('Failed to copy message');
     }
   };
 
@@ -299,33 +388,25 @@ export default function ChatPage() {
             // Don't show error to user as this is a background operation
           }
 
-          // Send message to AI service and get response
+          // Send message to AI service and get streaming response
           try {
-            const response = await fetch('/api/ai', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ prompt: initialMessage }),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-              throw new Error(data.error || 'Failed to get AI response');
-            }
-
-            const aiMessageContent = data.response;
+            const aiMessageContent = await handleStreamingAIResponse(initialMessage);
             
-            // Add AI message to database
+            // Save the complete AI response to database
             const savedAiMessage = await chatService.addMessage(
               chatid as string,
               aiMessageContent,
               'assistant'
             );
 
-            // Add AI message to UI
-            setMessages(prev => deduplicateMessages([...prev, { ...savedAiMessage, created_at: savedAiMessage.created_at }]));
+            // Replace the temporary message with the saved one
+            setMessages(prev => 
+              prev.map(msg => 
+                msg.id < 0 && msg.role === 'assistant' && msg.content === aiMessageContent
+                  ? { ...savedAiMessage, created_at: savedAiMessage.created_at }
+                  : msg
+              )
+            );
             
             // Update chat message count
             await chatService.updateChatMessageCount(chatid as string, 2); // 1 user + 1 AI
@@ -357,7 +438,7 @@ export default function ChatPage() {
 
     // Send immediately when conditions are met
     if (!isInitialLoad && initialMessage && !initialMessageAttemptedRef.current) {
-      sendInitialMessage();
+    sendInitialMessage();
     }
   }, [isInitialLoad, initialMessage, chatid, user, setInitialMessage, showError]);
 
@@ -397,33 +478,25 @@ export default function ChatPage() {
         ))
       );
 
-      // Send message to AI service and get response
+      // Send message to AI service and get streaming response
       try {
-        const response = await fetch('/api/ai', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ prompt: userMessageContent }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to get AI response');
-        }
-
-        const aiMessageContent = data.response;
+        const aiMessageContent = await handleStreamingAIResponse(userMessageContent);
         
-        // Add AI message to database
+        // Save the complete AI response to database
         const savedAiMessage = await chatService.addMessage(
           chatid as string,
           aiMessageContent,
           'assistant'
         );
 
-        // Add AI message to UI
-        setMessages(prev => deduplicateMessages([...prev, { ...savedAiMessage, created_at: savedAiMessage.created_at }]));
+        // Replace the temporary message with the saved one
+        setMessages(prev => 
+          prev.map(msg => 
+            msg.id < 0 && msg.role === 'assistant' && msg.content === aiMessageContent
+              ? { ...savedAiMessage, created_at: savedAiMessage.created_at }
+              : msg
+          )
+        );
         
         // Update chat message count
         await chatService.updateChatMessageCount(chatid as string, messages.length + 2);
@@ -480,7 +553,7 @@ export default function ChatPage() {
                         height: '60px',
                         minWidth: '200px'
                       }}
-                    ></div>
+                  ></div>
                   ) : (
                     // Assistant message skeleton (left-aligned)
                     <div className="max-w-[80%] py-3">
@@ -491,14 +564,14 @@ export default function ChatPage() {
                           height: '80px',
                           minWidth: '250px'
                         }}
-                      ></div>
+                  ></div>
                     </div>
                   )}
                 </div>
               ))}
             </div>
-          </div>
-
+            </div>
+            
           {/* Input area skeleton - matches real layout */}
           <div className="p-4">
             <div className="w-full max-w-2xl mx-auto space-y-3">
@@ -506,8 +579,8 @@ export default function ChatPage() {
               <div className="relative">
                 <div 
                   className="w-full h-32 rounded-2xl animate-pulse"
-                  style={{ backgroundColor: 'var(--secondary)' }}
-                ></div>
+              style={{ backgroundColor: 'var(--secondary)' }}
+            ></div>
               </div>
 
               {/* Second box skeleton */}
@@ -563,28 +636,175 @@ export default function ChatPage() {
                   {message.role === 'user' ? (
                     <div 
                       className="max-w-[80%] rounded-2xl px-4 py-3 rounded-br-none"
-                      style={{ 
+                    style={{ 
                         background: 'var(--accent-main)',
-                        border: '1px solid var(--border)',
+                      border: '1px solid var(--border)',
                         color: 'white'
-                      }}
-                    >
-                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    }}
+                  >
+                    <p className="whitespace-pre-wrap">{message.content}</p>
                     </div>
                   ) : (
                     <div className="max-w-[80%] py-3">
-                      <p className="whitespace-pre-wrap" style={{ color: 'var(--text)' }}>
-                        {message.content}
-                      </p>
+                      <div className="prose prose-sm max-w-none markdown-content" style={{ color: 'var(--text)' }}>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          rehypePlugins={[rehypeHighlight]}
+                          components={{
+                            // Custom styling for different markdown elements
+                            h1: ({children}) => (
+                              <h1 className="text-2xl font-bold mb-4 mt-6" style={{ color: 'var(--text)' }}>
+                                {children}
+                              </h1>
+                            ),
+                            h2: ({children}) => (
+                              <h2 className="text-xl font-bold mb-3 mt-5" style={{ color: 'var(--text)' }}>
+                                {children}
+                              </h2>
+                            ),
+                            h3: ({children}) => (
+                              <h3 className="text-lg font-semibold mb-2 mt-4" style={{ color: 'var(--text)' }}>
+                                {children}
+                              </h3>
+                            ),
+                            h4: ({children}) => (
+                              <h4 className="text-base font-semibold mb-2 mt-3" style={{ color: 'var(--text)' }}>
+                                {children}
+                              </h4>
+                            ),
+                            p: ({children}) => (
+                              <p className="mb-3 leading-relaxed" style={{ color: 'var(--text)' }}>
+                                {children}
+                              </p>
+                            ),
+                            ul: ({children}) => (
+                              <ul className="mb-3 ml-6 list-disc space-y-1" style={{ color: 'var(--text)' }}>
+                                {children}
+                              </ul>
+                            ),
+                            ol: ({children}) => (
+                              <ol className="mb-3 ml-6 list-decimal space-y-1" style={{ color: 'var(--text)' }}>
+                                {children}
+                              </ol>
+                            ),
+                            li: ({children}) => (
+                              <li className="leading-relaxed" style={{ color: 'var(--text)' }}>
+                                {children}
+                              </li>
+                            ),
+                            code: ({children, ...props}) => {
+                              const isInline = !props.className;
+                              return isInline ? (
+                                <code 
+                                  className="px-1.5 py-0.5 rounded text-sm font-mono"
+                                  style={{ 
+                                    backgroundColor: 'var(--secondary)',
+                                    color: 'var(--text)'
+                                  }}
+                                  {...props}
+                                >
+                                  {children}
+                                </code>
+                              ) : (
+                                <code {...props}>{children}</code>
+                              );
+                            },
+                            pre: ({children}) => (
+                              <pre 
+                                className="mb-4 p-4 rounded-lg overflow-x-auto text-sm font-mono"
+                                style={{ 
+                                  backgroundColor: 'var(--secondary)',
+                                  border: '1px solid var(--border)'
+                                }}
+                              >
+                                {children}
+                              </pre>
+                            ),
+                            blockquote: ({children}) => (
+                              <blockquote 
+                                className="mb-4 pl-4 italic border-l-4"
+                                style={{ 
+                                  borderLeftColor: 'var(--accent-main)',
+                                  color: 'var(--text)'
+                                }}
+                              >
+                                {children}
+                              </blockquote>
+                            ),
+                            hr: () => (
+                              <hr 
+                                className="my-6 border-0 h-px"
+                                style={{ backgroundColor: 'var(--border)' }}
+                              />
+                            ),
+                            strong: ({children}) => (
+                              <strong className="font-semibold" style={{ color: 'var(--text)' }}>
+                                {children}
+                              </strong>
+                            ),
+                            em: ({children}) => (
+                              <em className="italic" style={{ color: 'var(--text)' }}>
+                                {children}
+                              </em>
+                            ),
+                            a: ({children, href}) => (
+                              <a 
+                                href={href}
+                                className="underline hover:no-underline"
+                                style={{ color: 'var(--accent-main)' }}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {children}
+                              </a>
+                            ),
+                            table: ({children}) => (
+                              <div className="mb-4 overflow-x-auto">
+                                <table 
+                                  className="min-w-full border-collapse"
+                                  style={{ borderColor: 'var(--border)' }}
+                                >
+                                  {children}
+                                </table>
+                              </div>
+                            ),
+                            th: ({children}) => (
+                              <th 
+                                className="border px-4 py-2 text-left font-semibold"
+                                style={{ 
+                                  borderColor: 'var(--border)',
+                                  backgroundColor: 'var(--secondary)',
+                                  color: 'var(--text)'
+                                }}
+                              >
+                                {children}
+                              </th>
+                            ),
+                            td: ({children}) => (
+                              <td 
+                                className="border px-4 py-2"
+                                style={{ 
+                                  borderColor: 'var(--border)',
+                                  color: 'var(--text)'
+                                }}
+                              >
+                                {children}
+                              </td>
+                            ),
+                          } as Components}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   )}
                   {message.role === 'user' && (
-                    <button
+                      <button
                       onClick={() => copyMessageToClipboard(message.content, message.id)}
                       className={`mt-1 w-6 h-6 rounded flex items-center justify-center transition-all duration-300 ${
                         hoveredMessageId === message.id || copiedMessageId === message.id ? 'opacity-70 hover:opacity-100' : 'opacity-0'
                       }`}
-                      style={{ 
+                        style={{ 
                         background: 'var(--secondary)',
                         color: 'var(--text)'
                       }}
@@ -628,8 +848,8 @@ export default function ChatPage() {
                           />
                         </svg>
                       </div>
-                    </button>
-                  )}
+                      </button>
+                    )}
                 </div>
               ))
             )}

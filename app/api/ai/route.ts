@@ -1,5 +1,4 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { NextResponse } from 'next/server';
 
 // Initialize the Google Generative AI client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
@@ -11,9 +10,9 @@ export async function POST(request: Request) {
   try {
     // Check if API key is available
     if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json(
-        { error: 'GEMINI_API_KEY is not set in environment variables' },
-        { status: 500 }
+      return new Response(
+        JSON.stringify({ error: 'GEMINI_API_KEY is not set in environment variables' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
@@ -21,9 +20,9 @@ export async function POST(request: Request) {
 
     // Validate input
     if (!prompt) {
-      return NextResponse.json(
-        { error: 'Prompt is required' },
-        { status: 400 }
+      return new Response(
+        JSON.stringify({ error: 'Prompt is required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
@@ -33,17 +32,48 @@ export async function POST(request: Request) {
     // Combine system prompt with user prompt
     const fullPrompt = `${systemPrompt}\n\nUser: ${prompt}`;
 
-    // Generate content using the model
-    const result = await model.generateContent(fullPrompt);
-    const response = await result.response;
-    const text = response.text();
+    // Generate streaming content using the model
+    const result = await model.generateContentStream(fullPrompt);
 
-    return NextResponse.json({ response: text });
+    // Create a ReadableStream to handle the streaming response
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of result.stream) {
+            const chunkText = chunk.text();
+            if (chunkText) {
+              // Send each chunk as a server-sent event
+              controller.enqueue(
+                new TextEncoder().encode(`data: ${JSON.stringify({ chunk: chunkText })}\n\n`)
+              );
+            }
+          }
+          // Signal end of stream
+          controller.enqueue(new TextEncoder().encode(`data: [DONE]\n\n`));
+          controller.close();
+        } catch (error) {
+          console.error('Error in streaming:', error);
+          controller.enqueue(
+            new TextEncoder().encode(`data: ${JSON.stringify({ error: 'Streaming error' })}\n\n`)
+          );
+          controller.close();
+        }
+      }
+    });
+
+    // Return streaming response
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
   } catch (error) {
     console.error('Error generating AI response:', error);
-    return NextResponse.json(
-      { error: 'Failed to generate AI response: ' + (error as Error).message },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({ error: 'Failed to generate AI response: ' + (error as Error).message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
 }
