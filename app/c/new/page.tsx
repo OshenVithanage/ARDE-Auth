@@ -29,8 +29,55 @@ export default function NewChatPage() {
   const secondBoxRef = useRef<HTMLDivElement>(null);
   const { isExpanded, toggleSidebar } = useSidebar();
   const { showError } = useToast();
+  const [isStarFilled, setIsStarFilled] = useState(false);
+  const [openMenuChatId, setOpenMenuChatId] = useState<string | null>(null);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const supabase = createClientComponentClient();
+
+  // Handle star toggle
+  const handleStarToggle = () => {
+    setIsStarFilled(!isStarFilled);
+  };
+
+  // Handle three dots menu toggle
+  const handleMenuToggle = (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenMenuChatId(openMenuChatId === chatId ? null : chatId);
+  };
+
+  // Handle menu actions
+  const handleSelectChat = (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // TODO: Implement select functionality
+    console.log('Select chat:', chatId);
+    setOpenMenuChatId(null);
+  };
+
+  const handleRenameChat = (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // TODO: Implement rename functionality
+    console.log('Rename chat:', chatId);
+    setOpenMenuChatId(null);
+  };
+
+  const handleDeleteChat = (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // TODO: Implement delete functionality
+    console.log('Delete chat:', chatId);
+    setOpenMenuChatId(null);
+  };
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setOpenMenuChatId(null);
+    };
+
+    if (openMenuChatId) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [openMenuChatId]);
 
   useEffect(() => {
     if (!loading) {
@@ -345,9 +392,36 @@ export default function NewChatPage() {
               </div>
             ) : (
               // Chat history - only visible when expanded
-              <div className="h-full flex flex-col">
-                <div className="text-sm font-medium mb-2 px-5 mt-4" style={{ color: 'var(--text)' }}>
-                  Chat History
+              <div className="h-full flex flex-col relative">
+                <div className="text-sm font-medium mb-4 px-4 mt-4 flex items-center justify-between" style={{ color: 'var(--text)' }}>
+                  <span>Chat History</span>
+                  <button
+                    onClick={handleStarToggle}
+                    className="p-1 rounded transition-colors hover:bg-opacity-10"
+                    style={{ 
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--border)';
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    {isStarFilled ? (
+                      // Filled star
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--text)" />
+                      </svg>
+                    ) : (
+                      // Unfilled star
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="var(--text)" strokeWidth="1.5" fill="none" />
+                      </svg>
+                    )}
+                  </button>
                 </div>
                 <div className="flex-1 overflow-y-auto px-5 pb-4 custom-scrollbar">
                   {isLoadingChats ? (
@@ -365,20 +439,147 @@ export default function NewChatPage() {
                       No chat history yet
                     </div>
                   ) : (
-                    <div className="space-y-1">
-                      {chats.map((chat) => (
-                        <div
-                          key={chat.chat_id}
-                          onClick={() => handleChatSelect(chat.chat_id)}
-                          className="px-3 py-2 rounded-lg cursor-pointer hover:bg-opacity-20 transition-colors truncate"
-                          style={{ 
-                            color: 'var(--text)',
-                            backgroundColor: 'var(--secondary)'
-                          }}
-                        >
-                          <div className="truncate">
-                            {chat.name || `Chat from ${new Date(chat.created_at).toLocaleDateString()}`}
+                    <div className="space-y-0 -mx-5">
+                      {chats.map((chat, index) => (
+                        <div key={chat.chat_id} data-chat-id={chat.chat_id}>
+                          {index === 0 && (
+                            <div 
+                              className="h-px mb-0" 
+                              style={{ backgroundColor: 'var(--border)' }}
+                            ></div>
+                          )}
+                          <div
+                            onClick={() => handleChatSelect(chat.chat_id)}
+                            className="px-8 py-3 cursor-pointer hover:bg-opacity-10 transition-colors truncate relative group"
+                            style={{ 
+                              color: 'var(--text)'
+                            }}
+                            onMouseEnter={(e) => {
+                              (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--border)';
+                            }}
+                            onMouseLeave={(e) => {
+                              (e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent';
+                            }}
+                          >
+                            <div className="truncate pr-8">
+                              {chat.name || `Chat from ${new Date(chat.created_at).toLocaleDateString()}`}
+                            </div>
+                            {/* Three dots icon - only visible on hover */}
+                            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={(e) => handleMenuToggle(chat.chat_id, e)}
+                                className="p-1 rounded transition-colors hover:bg-opacity-10"
+                                style={{ 
+                                  backgroundColor: 'transparent',
+                                  border: 'none',
+                                  cursor: 'pointer'
+                                }}
+                                onMouseEnter={(e) => {
+                                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--border)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                                }}
+                              >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <circle cx="12" cy="12" r="1.5" fill="var(--text)"/>
+                                  <circle cx="12" cy="6" r="1.5" fill="var(--text)"/>
+                                  <circle cx="12" cy="18" r="1.5" fill="var(--text)"/>
+                                </svg>
+                              </button>
+                              
+                              {/* Dropdown Menu */}
+                              {openMenuChatId === chat.chat_id && (
+                                <div 
+                                  className="absolute right-0 top-8 w-48 rounded-lg shadow-lg z-[9999]"
+                                  style={{ 
+                                    backgroundColor: 'var(--primary)',
+                                    border: '1px solid var(--border)',
+                                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.5)'
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {/* Select Option */}
+                                  <button
+                                    onClick={(e) => handleSelectChat(chat.chat_id, e)}
+                                    className="w-full px-3 py-2 text-left flex items-center gap-3 hover:bg-opacity-10 transition-colors rounded-t-lg"
+                                    style={{ 
+                                      color: 'var(--text)',
+                                      backgroundColor: 'transparent',
+                                      border: 'none'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--border)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                                    }}
+                                  >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <path d="M20 6L9 17l-5-5" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                    <span>Select</span>
+                                  </button>
+                                  
+                                  {/* Divider */}
+                                  <div 
+                                    className="h-px mx-0" 
+                                    style={{ backgroundColor: 'var(--border)' }}
+                                  ></div>
+                                  
+                                  {/* Rename Option */}
+                                  <button
+                                    onClick={(e) => handleRenameChat(chat.chat_id, e)}
+                                    className="w-full px-3 py-2 text-left flex items-center gap-3 hover:bg-opacity-10 transition-colors"
+                                    style={{ 
+                                      color: 'var(--text)',
+                                      backgroundColor: 'transparent',
+                                      border: 'none'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--border)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                                    }}
+                                  >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                    <span>Rename</span>
+                                  </button>
+                                  
+                                  {/* Delete Option */}
+                                  <button
+                                    onClick={(e) => handleDeleteChat(chat.chat_id, e)}
+                                    className="w-full px-3 py-2 text-left flex items-center gap-3 hover:bg-opacity-10 transition-colors rounded-b-lg"
+                                    style={{ 
+                                      color: '#ef4444', // Red color for delete
+                                      backgroundColor: 'transparent',
+                                      border: 'none'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                                    }}
+                                  >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                      <line x1="10" y1="11" x2="10" y2="17" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                      <line x1="14" y1="11" x2="14" y2="17" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
+                          <div 
+                            className="h-px" 
+                            style={{ backgroundColor: 'var(--border)' }}
+                          ></div>
                         </div>
                       ))}
                     </div>
