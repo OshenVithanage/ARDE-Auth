@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChatContext } from '../../contexts/ChatContext';
@@ -31,7 +32,12 @@ export default function NewChatPage() {
   const { showError } = useToast();
   const [isStarFilled, setIsStarFilled] = useState(false);
   const [openMenuChatId, setOpenMenuChatId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{top: number, right: number} | null>(null);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
+  // State for custom delete confirmation modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [chatToDelete, setChatToDelete] = useState<{id: string, name: string} | null>(null);
   const supabase = createClientComponentClient();
 
   // Handle star toggle
@@ -42,7 +48,18 @@ export default function NewChatPage() {
   // Handle three dots menu toggle
   const handleMenuToggle = (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setOpenMenuChatId(openMenuChatId === chatId ? null : chatId);
+    if (openMenuChatId === chatId) {
+      setOpenMenuChatId(null);
+      setMenuPosition(null);
+    } else {
+      setOpenMenuChatId(chatId);
+      const button = e.currentTarget;
+      const rect = button.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.bottom + window.scrollY,
+        right: window.innerWidth - rect.right
+      });
+    }
   };
 
   // Handle menu actions
@@ -60,17 +77,68 @@ export default function NewChatPage() {
     setOpenMenuChatId(null);
   };
 
-  const handleDeleteChat = (chatId: string, e: React.MouseEvent) => {
+  const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    // TODO: Implement delete functionality
-    console.log('Delete chat:', chatId);
+    
+    // Close the menu immediately
     setOpenMenuChatId(null);
+    setMenuPosition(null);
+    
+    // Find the chat being deleted
+    const chatToDelete = chats.find(chat => chat.chat_id === chatId);
+    if (!chatToDelete) {
+      showError('Chat not found.');
+      return;
+    }
+    
+    // Set the chat to delete and show custom confirmation modal
+    const chatName = chatToDelete.name || `Chat from ${new Date(chatToDelete.created_at).toLocaleDateString()}`;
+    setChatToDelete({id: chatId, name: chatName});
+    setShowDeleteModal(true);
+  };
+  
+  const confirmDeleteChat = async () => {
+    if (!chatToDelete) return;
+    
+    const chatId = chatToDelete.id;
+    
+    // Close the modal
+    setShowDeleteModal(false);
+    
+    // Set loading state for this specific chat
+    setDeletingChatId(chatId);
+    
+    try {
+      // Delete the chat from Supabase
+      await chatService.deleteChat(chatId, user!.id);
+      
+      // Success message
+      console.log('Chat deleted successfully');
+      
+      // Optimistically remove the chat from the UI as a fallback
+      // in case the real-time subscription is slow or not working
+      setChats(prevChats => prevChats.filter(chat => chat.chat_id !== chatId));
+      
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+      showError('Failed to delete chat. Please try again.');
+    } finally {
+      // Clear loading state and reset delete state
+      setDeletingChatId(null);
+      setChatToDelete(null);
+    }
+  };
+  
+  const cancelDeleteChat = () => {
+    setShowDeleteModal(false);
+    setChatToDelete(null);
   };
 
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = () => {
       setOpenMenuChatId(null);
+      setMenuPosition(null);
     };
 
     if (openMenuChatId) {
@@ -132,8 +200,13 @@ export default function NewChatPage() {
           } else if (payload.eventType === 'DELETE') {
             // Remove deleted chat
             const deletedChat = payload.old as Chat;
+            console.log('Deleting chat:', deletedChat.chat_id);
             setChats(prev => 
               prev.filter(chat => chat.chat_id !== deletedChat.chat_id)
+            );
+            // Clear loading state if this chat was being deleted
+            setDeletingChatId(prevId => 
+              prevId === deletedChat.chat_id ? null : prevId
             );
           }
         }
@@ -464,8 +537,10 @@ export default function NewChatPage() {
                             <div className="truncate pr-8">
                               {chat.name || `Chat from ${new Date(chat.created_at).toLocaleDateString()}`}
                             </div>
-                            {/* Three dots icon - only visible on hover */}
-                            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Three dots icon - visible on hover, when menu is open, or when deleting */}
+                            <div className={`absolute right-3 top-1/2 transform -translate-y-1/2 transition-opacity ${
+                              openMenuChatId === chat.chat_id || deletingChatId === chat.chat_id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                            }`}>
                               <button
                                 onClick={(e) => handleMenuToggle(chat.chat_id, e)}
                                 className="p-1 rounded transition-colors hover:bg-opacity-10"
@@ -480,22 +555,29 @@ export default function NewChatPage() {
                                 onMouseLeave={(e) => {
                                   (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
                                 }}
+                                disabled={deletingChatId === chat.chat_id}
                               >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <circle cx="12" cy="12" r="1.5" fill="var(--text)"/>
-                                  <circle cx="12" cy="6" r="1.5" fill="var(--text)"/>
-                                  <circle cx="12" cy="18" r="1.5" fill="var(--text)"/>
-                                </svg>
+                                {deletingChatId === chat.chat_id ? (
+                                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" style={{ color: 'var(--text)' }}></div>
+                                ) : (
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="12" cy="12" r="1.5" fill="var(--text)"/>
+                                    <circle cx="12" cy="6" r="1.5" fill="var(--text)"/>
+                                    <circle cx="12" cy="18" r="1.5" fill="var(--text)"/>
+                                  </svg>
+                                )}
                               </button>
                               
                               {/* Dropdown Menu */}
-                              {openMenuChatId === chat.chat_id && (
+                              {typeof document !== 'undefined' && openMenuChatId === chat.chat_id && menuPosition && createPortal(
                                 <div 
-                                  className="absolute right-0 top-8 w-48 rounded-lg shadow-lg z-[9999]"
+                                  className="fixed w-30 rounded-lg shadow-lg z-[9999]"
                                   style={{ 
                                     backgroundColor: 'var(--primary)',
                                     border: '1px solid var(--border)',
-                                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.5)'
+                                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.5)',
+                                    top: `${menuPosition.top}px`,
+                                    right: `${menuPosition.right}px`
                                   }}
                                   onClick={(e) => e.stopPropagation()}
                                 >
@@ -572,7 +654,8 @@ export default function NewChatPage() {
                                     </svg>
                                     <span>Delete</span>
                                   </button>
-                                </div>
+                                </div>,
+                                document.body
                               )}
                             </div>
                           </div>
@@ -590,6 +673,67 @@ export default function NewChatPage() {
           </div>
         </div>
       </div>
+      
+      {/* Custom Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-[10000]"
+          style={{ zIndex: 10000 }}
+          onClick={cancelDeleteChat}
+        >
+          <div 
+            className="rounded-lg p-6 w-full max-w-md"
+            style={{ 
+              backgroundColor: 'var(--primary)',
+              border: '1px solid var(--border)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--text)' }}>
+              Confirm Delete
+            </h3>
+            <p className="mb-6" style={{ color: 'var(--text)' }}>
+              Are you sure you want to delete "{chatToDelete?.name}"? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                className="px-4 py-2 rounded-lg font-medium transition-colors"
+                style={{ 
+                  backgroundColor: 'transparent',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)'
+                }}
+                onClick={cancelDeleteChat}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--border)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg font-medium transition-colors"
+                style={{ 
+                  backgroundColor: '#ef4444',
+                  color: 'white',
+                  border: 'none'
+                }}
+                onClick={confirmDeleteChat}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#dc2626';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#ef4444';
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

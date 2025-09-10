@@ -156,5 +156,36 @@ export const chatService = {
       console.error('Error updating chat name:', error);
       throw error;
     }
-  }
+  },
+
+  // Delete chat and related messages
+  deleteChat: async (chatId: string, userId: string) => {
+    try {
+      // First, delete all messages associated with this chat
+      const { error: messagesError } = await supabase
+        .from('Messages')
+        .delete()
+        .eq('chat_id', chatId);
+
+      // If there's an error deleting messages (other than table not existing), throw it
+      if (messagesError && !messagesError.message.includes('relation "Messages" does not exist') && 
+          !messagesError.message.includes('does not exist')) {
+        console.error('Error deleting messages:', messagesError);
+        throw messagesError;
+      }
+
+      // Then delete the chat itself
+      const { error: chatError } = await supabase
+        .from('Chats')
+        .delete()
+        .eq('chat_id', chatId)
+        .eq('Owner', userId);
+
+      if (chatError) throw chatError;
+      return true;
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+      throw error;
+    }
+  },
 };
