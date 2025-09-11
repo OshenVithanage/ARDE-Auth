@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, unstable_batchedUpdates } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChatContext } from '../../contexts/ChatContext';
@@ -45,6 +45,7 @@ export default function NewChatPage() {
   // State for custom delete confirmation modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [chatToDelete, setChatToDelete] = useState<{id: string, name: string} | null>(null);
+  const [chatsToDelete, setChatsToDelete] = useState<{ids: string[], count: number} | null>(null);
   const [isModalAnimating, setIsModalAnimating] = useState(false);
   const [isDeleteButtonCooldown, setIsDeleteButtonCooldown] = useState(false);
   // State for rename modal
@@ -244,9 +245,8 @@ export default function NewChatPage() {
   };
   
   const confirmDeleteChat = async () => {
-    if (!chatToDelete || isModalAnimating || isDeleteButtonCooldown) return;
+    if ((!chatToDelete && !chatsToDelete) || isModalAnimating || isDeleteButtonCooldown) return;
     
-    const chatId = chatToDelete.id;
     setIsModalAnimating(true);
     setIsDeleteButtonCooldown(true);
     
@@ -260,7 +260,11 @@ export default function NewChatPage() {
       setShowDeleteModal(false);
       setIsModalAnimating(false);
       // Continue with deletion after animation
-      proceedWithDeletion(chatId);
+      if (chatsToDelete) {
+        proceedWithBulkDeletion(chatsToDelete.ids);
+      } else if (chatToDelete) {
+        proceedWithDeletion(chatToDelete.id);
+      }
     });
   };
 
@@ -289,6 +293,47 @@ export default function NewChatPage() {
       setChatToDelete(null);
     }
   };
+
+  const proceedWithBulkDeletion = async (chatIds: string[]) => {
+    // Exit selection mode first
+    setIsSelectionMode(false);
+    setSelectedChats(new Set());
+    
+    // Set loading state for all selected chats
+    setDeletingChatIds(new Set(chatIds));
+    
+    try {
+      // Optimistically remove the chats from the UI immediately
+      setChats(prevChats => 
+        prevChats.filter(chat => !chatIds.includes(chat.chat_id))
+      );
+      
+      // Clear loading states immediately since chats are already removed from UI
+      setDeletingChatIds(new Set());
+      
+      // Delete all selected chats in parallel
+      await Promise.all(
+        chatIds.map(chatId => chatService.deleteChat(chatId, user!.id))
+      );
+      
+      console.log('Bulk delete successful');
+    } catch (error) {
+      console.error('Error in bulk delete:', error);
+      showError('Failed to delete some chats. Please try again.');
+      
+      // If there was an error, refresh the chat list to restore any chats that weren't actually deleted
+      try {
+        const chatData = await chatService.getUserChats(user!.id);
+        setChats(chatData || []);
+      } catch (refreshError) {
+        console.error('Error refreshing chat list after failed bulk delete:', refreshError);
+      }
+    } finally {
+      // Clear all loading states and reset bulk delete state
+      setDeletingChatIds(new Set());
+      setChatsToDelete(null);
+    }
+  };
   
   const cancelDeleteChat = () => {
     if (isModalAnimating) return;
@@ -300,7 +345,10 @@ export default function NewChatPage() {
     animateModalOut(() => {
       setShowDeleteModal(false);
       setChatToDelete(null);
+      setChatsToDelete(null);
       setIsModalAnimating(false);
+      // Note: When canceling bulk deletion, we preserve selection mode and selected chats
+      // as per requirements - only clear them on successful deletion
     });
   };
 
@@ -380,43 +428,12 @@ export default function NewChatPage() {
     
     const chatIds = Array.from(selectedChats);
     
-    // Exit selection mode
-    setIsSelectionMode(false);
-    setSelectedChats(new Set());
-    
-    // Set loading state for all selected chats
-    setDeletingChatIds(new Set(chatIds));
-    
-    try {
-      // Optimistically remove the chats from the UI immediately
-      setChats(prevChats => 
-        prevChats.filter(chat => !chatIds.includes(chat.chat_id))
-      );
-      
-      // Clear loading states immediately since chats are already removed from UI
-      setDeletingChatIds(new Set());
-      
-      // Delete all selected chats in parallel
-      await Promise.all(
-        chatIds.map(chatId => chatService.deleteChat(chatId, user!.id))
-      );
-      
-      console.log('Bulk delete successful');
-    } catch (error) {
-      console.error('Error in bulk delete:', error);
-      showError('Failed to delete some chats. Please try again.');
-      
-      // If there was an error, refresh the chat list to restore any chats that weren't actually deleted
-      try {
-        const chatData = await chatService.getUserChats(user!.id);
-        setChats(chatData || []);
-      } catch (refreshError) {
-        console.error('Error refreshing chat list after failed bulk delete:', refreshError);
-      }
-    } finally {
-      // Clear all loading states
-      setDeletingChatIds(new Set());
-    }
+    // Set up bulk deletion confirmation modal
+    setChatsToDelete({ids: chatIds, count: chatIds.length});
+    setChatToDelete(null); // Clear single chat deletion
+    // Reset cooldown when opening new modal
+    setIsDeleteButtonCooldown(false);
+    setShowDeleteModal(true);
   };
 
   // Trigger modal entrance animation when showDeleteModal becomes true
@@ -525,13 +542,16 @@ export default function NewChatPage() {
               prev.filter(chat => chat.chat_id !== deletedChat.chat_id)
             );
             // Clear loading state if this chat was being deleted (both single and bulk)
-            setDeletingChatId(prevId => 
-              prevId === deletedChat.chat_id ? null : prevId
-            );
-            setDeletingChatIds(prevIds => {
-              const newIds = new Set(prevIds);
-              newIds.delete(deletedChat.chat_id);
-              return newIds;
+            // Use batched updates to avoid races with optimistic updates
+            unstable_batchedUpdates(() => {
+              setDeletingChatId(prevId => 
+                prevId === deletedChat.chat_id ? null : prevId
+              );
+              setDeletingChatIds(prevIds => {
+                const newIds = new Set(prevIds);
+                newIds.delete(deletedChat.chat_id);
+                return newIds;
+              });
             });
           }
         }
@@ -886,7 +906,7 @@ export default function NewChatPage() {
                     </div>
                   ) : filteredChats.length === 0 ? (
                     <div className="text-sm py-4 text-center" style={{ color: 'var(--text)' }}>
-                      {isStarFilled ? 'Starred Chats' : 'No chat history yet'}
+                      {isStarFilled ? 'No Starred Chats yet' : 'No chat history yet'}
                     </div>
                   ) : (
                     <div className="space-y-0 -mx-5">
@@ -1142,7 +1162,10 @@ export default function NewChatPage() {
               Confirm Delete
             </h3>
             <p className="mb-6" style={{ color: 'var(--text)' }}>
-              Are you sure you want to delete "{chatToDelete?.name}"? This action cannot be undone.
+              {chatsToDelete 
+                ? `Are you sure you want to delete ${chatsToDelete.count} chat${chatsToDelete.count > 1 ? 's' : ''}? This action cannot be undone.`
+                : `Are you sure you want to delete "${chatToDelete?.name}"? This action cannot be undone.`
+              }
             </p>
             <div className="flex justify-end gap-3">
               <button

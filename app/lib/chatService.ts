@@ -189,12 +189,26 @@ export const chatService = {
     }
   },
 
-  // Update chat other data (JSONB column)
+  // Update chat other data (JSONB column) - merges with existing data
   updateChatOther: async (chatId: string, otherData: Record<string, unknown>) => {
     try {
+      // First, get the current other data
+      const { data: currentChat, error: fetchError } = await supabase
+        .from('Chats')
+        .select('other')
+        .eq('chat_id', chatId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Merge the new data with existing data
+      const currentOther = currentChat?.other || {};
+      const mergedOther = { ...currentOther, ...otherData };
+
+      // Update with merged data
       const { data, error } = await supabase
         .from('Chats')
-        .update({ other: otherData })
+        .update({ other: mergedOther })
         .eq('chat_id', chatId)
         .select()
         .single();
