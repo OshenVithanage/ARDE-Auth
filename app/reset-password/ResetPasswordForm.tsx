@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useToast } from '../components/messaging'
 import { createClientComponentClient } from '../lib/supabase'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 
 export default function ResetPasswordForm() {
     const [showPassword, setShowPassword] = useState(false)
@@ -13,7 +13,6 @@ export default function ResetPasswordForm() {
     const [resetComplete, setResetComplete] = useState(false)
     const { showError, showSuccess } = useToast()
     const supabase = createClientComponentClient()
-    const searchParams = useSearchParams()
     const router = useRouter()
 
     const handleSubmit = async (e?: React.FormEvent) => {

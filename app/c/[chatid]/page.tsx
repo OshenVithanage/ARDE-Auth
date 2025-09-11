@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChatContext } from '../../contexts/ChatContext';
@@ -54,7 +54,7 @@ export default function ChatPage() {
   };
 
   // Function to handle streaming AI responses
-  const handleStreamingAIResponse = async (prompt: string): Promise<string> => {
+  const handleStreamingAIResponse = useCallback(async (prompt: string): Promise<string> => {
     return new Promise(async (resolve, reject) => {
       try {
         const response = await fetch('/api/ai', {
@@ -136,7 +136,7 @@ export default function ChatPage() {
         reject(error);
       }
     });
-  };
+  }, []);
 
   // Scroll to bottom of messages
   const scrollToBottom = () => {
@@ -440,7 +440,7 @@ export default function ChatPage() {
     if (!isInitialLoad && initialMessage && !initialMessageAttemptedRef.current) {
     sendInitialMessage();
     }
-  }, [isInitialLoad, initialMessage, chatid, user, setInitialMessage, showError]);
+  }, [isInitialLoad, initialMessage, chatid, user, setInitialMessage, showError, handleStreamingAIResponse]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(e.target.value);

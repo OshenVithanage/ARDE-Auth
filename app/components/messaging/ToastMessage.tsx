@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 export interface ToastMessageData {
     id: string
@@ -17,9 +17,16 @@ interface ToastMessageProps {
     isExiting?: boolean
 }
 
-export default function ToastMessage({ message, onClose, isGrouped = false, isNewest = false, isExiting: isExitingAll = false }: ToastMessageProps) {
+export default function ToastMessage({ message, onClose, isNewest = false, isExiting: isExitingAll = false }: ToastMessageProps) {
     const [isVisible, setIsVisible] = useState(false)
     const [isExiting, setIsExiting] = useState(false)
+
+    const handleClose = useCallback(() => {
+        setIsExiting(true)
+        setTimeout(() => {
+            onClose(message.id)
+        }, 300)
+    }, [onClose, message.id])
 
     useEffect(() => {
         // Entrance animation for the newest message
@@ -34,20 +41,13 @@ export default function ToastMessage({ message, onClose, isGrouped = false, isNe
             handleClose()
         }, 10000)
         return () => clearTimeout(timer)
-    }, [isNewest])
+    }, [isNewest, handleClose])
 
     useEffect(() => {
         if (isExitingAll) {
             setIsExiting(true)
         }
     }, [isExitingAll])
-
-    const handleClose = () => {
-        setIsExiting(true)
-        setTimeout(() => {
-            onClose(message.id)
-        }, 300)
-    }
 
     const getTypeConfig = (type: string) => {
         switch (type) {

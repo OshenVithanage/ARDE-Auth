@@ -3,17 +3,16 @@
 import { useState } from 'react'
 import { useToast } from '../components/messaging'
 import { createClientComponentClient } from '../lib/supabase'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 
 export default function LoginForm() {
     const [showPassword, setShowPassword] = useState(false)
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
-    const { showError, showWarning, showSuccess } = useToast()
+    const { showError, showSuccess } = useToast()
     const supabase = createClientComponentClient()
     const router = useRouter()
-    const searchParams = useSearchParams()
 
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault()
@@ -63,7 +62,7 @@ export default function LoginForm() {
     const handleSocialLogin = async (provider: 'google' | 'apple') => {
         try {
             setLoading(true);
-            const { data, error } = await supabase.auth.signInWithOAuth({
+            const { error } = await supabase.auth.signInWithOAuth({
                 provider: provider,
                 options: {
                     redirectTo: `${window.location.origin}/c/new`,

@@ -2,7 +2,7 @@
 
 import { useAuth } from '../contexts/AuthContext'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClientComponentClient } from '../lib/supabase'
 import imageCompression from 'browser-image-compression'
 
@@ -21,14 +21,7 @@ export default function Accounts() {
         }
     }, [user, loading, router])
 
-    // Fetch user's profile image from user metadata
-    useEffect(() => {
-        if (user) {
-            fetchProfileImage()
-        }
-    }, [user])
-
-    const fetchProfileImage = async () => {
+    const fetchProfileImage = useCallback(async () => {
         setFetchingImage(true)
         try {
             // Check if user has an avatar URL in their metadata
@@ -40,7 +33,14 @@ export default function Accounts() {
         } finally {
             setFetchingImage(false)
         }
-    }
+    }, [user])
+
+    // Fetch user's profile image from user metadata
+    useEffect(() => {
+        if (user) {
+            fetchProfileImage()
+        }
+    }, [user, fetchProfileImage])
 
     const handleSignOut = async () => {
         await signOut()
@@ -71,7 +71,7 @@ export default function Accounts() {
                 const base64Image = event.target?.result as string
                 
                 // Update user metadata with avatar URL
-                const { data, error } = await supabase.auth.updateUser({
+                const { error } = await supabase.auth.updateUser({
                     data: {
                         avatar_url: base64Image
                     }

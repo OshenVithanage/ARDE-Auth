@@ -10,7 +10,7 @@ interface MessageGroupProps {
     newestMessageId?: string | null
 }
 
-export default function MessageGroup({ messages, onClose, onClearAll, newestMessageId }: MessageGroupProps) {
+export default function MessageGroup({ messages, onClose, onClearAll }: MessageGroupProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [isExitingAll, setIsExitingAll] = useState(false)
     const groupRef = useRef<HTMLDivElement>(null)
@@ -41,10 +41,6 @@ export default function MessageGroup({ messages, onClose, onClearAll, newestMess
         }
     }, [])
 
-    const addMessage = (newMessage: ToastMessageData) => {
-        onClose(newMessage.id); // Ensure no duplicate messages are added
-        messages.push(newMessage);
-    };
 
     if (messageCount === 0) return null
 

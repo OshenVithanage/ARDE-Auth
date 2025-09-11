@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useToast } from '../components/messaging'
 import { createClientComponentClient } from '../lib/supabase'
-import { useRouter } from 'next/navigation'
 
 export default function ForgotPassword() {
     const [email, setEmail] = useState('')
@@ -12,7 +11,6 @@ export default function ForgotPassword() {
     const [pageLoading, setPageLoading] = useState(true)
     const { showError, showSuccess } = useToast()
     const supabase = createClientComponentClient()
-    const router = useRouter()
 
     useEffect(() => {
         // Simulate a brief loading delay for consistency

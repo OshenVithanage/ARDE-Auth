@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
@@ -18,7 +18,7 @@ interface Chat {
   name?: string;
   other?: {
     starred?: boolean;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
@@ -47,6 +47,11 @@ export default function NewChatPage() {
   const [chatToDelete, setChatToDelete] = useState<{id: string, name: string} | null>(null);
   const [isModalAnimating, setIsModalAnimating] = useState(false);
   const [isDeleteButtonCooldown, setIsDeleteButtonCooldown] = useState(false);
+  // State for rename modal
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [chatToRename, setChatToRename] = useState<{id: string, name: string} | null>(null);
+  const [renameInput, setRenameInput] = useState('');
+  const [isRenamingChat, setIsRenamingChat] = useState(false);
   // State for selection mode
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
@@ -90,9 +95,92 @@ export default function NewChatPage() {
 
   const handleRenameChat = (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    // TODO: Implement rename functionality
-    console.log('Rename chat:', chatId);
+    
+    // Close the menu immediately
     setOpenMenuChatId(null);
+    setMenuPosition(null);
+    
+    // Find the chat being renamed
+    const chatToRename = chats.find(chat => chat.chat_id === chatId);
+    if (!chatToRename) {
+      showError('Chat not found.');
+      return;
+    }
+    
+    // Set the chat to rename and show rename modal
+    const chatName = chatToRename.name || `Chat from ${new Date(chatToRename.created_at).toLocaleDateString()}`;
+    setChatToRename({id: chatId, name: chatName});
+    setRenameInput(chatName);
+    setShowRenameModal(true);
+  };
+
+  const confirmRenameChat = async () => {
+    if (!chatToRename || isModalAnimating || !renameInput.trim()) return;
+    
+    const newName = renameInput.trim();
+    const originalName = chatToRename.name;
+    
+    // If name hasn't changed, just close modal without server call
+    if (newName === originalName) {
+      cancelRenameChat();
+      return;
+    }
+    
+    const chatId = chatToRename.id;
+    setIsModalAnimating(true);
+    setIsRenamingChat(true);
+    
+    try {
+      // Optimistically update the UI first
+      setChats(prevChats => 
+        prevChats.map(chat => 
+          chat.chat_id === chatId 
+            ? { ...chat, name: newName }
+            : chat
+        )
+      );
+      
+      // Animate modal out
+      animateModalOut(() => {
+        setShowRenameModal(false);
+        setIsModalAnimating(false);
+        setChatToRename(null);
+        setRenameInput('');
+      });
+      
+      // Update the chat name in the database
+      await chatService.updateChatName(chatId, newName);
+      
+      console.log('Chat renamed successfully');
+    } catch (error) {
+      console.error('Error renaming chat:', error);
+      
+      // Revert the optimistic update on error
+      setChats(prevChats => 
+        prevChats.map(chat => 
+          chat.chat_id === chatId 
+            ? { ...chat, name: originalName }
+            : chat
+        )
+      );
+      
+      showError('Failed to rename chat. Please try again.');
+    } finally {
+      setIsRenamingChat(false);
+    }
+  };
+  
+  const cancelRenameChat = () => {
+    if (isModalAnimating) return;
+    
+    setIsModalAnimating(true);
+    // Animate modal out
+    animateModalOut(() => {
+      setShowRenameModal(false);
+      setChatToRename(null);
+      setRenameInput('');
+      setIsModalAnimating(false);
+    });
   };
 
   const handleStarChat = async (chatId: string, e: React.MouseEvent) => {
@@ -270,15 +358,6 @@ export default function NewChatPage() {
     }
   };
 
-  // Selection mode functions
-  const toggleSelectionMode = () => {
-    setIsSelectionMode(!isSelectionMode);
-    // Clear selected chats when exiting selection mode
-    if (isSelectionMode) {
-      setSelectedChats(new Set());
-    }
-  };
-
   const toggleChatSelection = (chatId: string) => {
     setSelectedChats(prev => {
       const newSelected = new Set(prev);
@@ -289,15 +368,6 @@ export default function NewChatPage() {
       }
       return newSelected;
     });
-  };
-
-  const selectAllChats = () => {
-    const allChatIds = new Set(filteredChats.map(chat => chat.chat_id));
-    setSelectedChats(allChatIds);
-  };
-
-  const deselectAllChats = () => {
-    setSelectedChats(new Set());
   };
 
   const cancelSelectionMode = () => {
@@ -318,6 +388,14 @@ export default function NewChatPage() {
     setDeletingChatIds(new Set(chatIds));
     
     try {
+      // Optimistically remove the chats from the UI immediately
+      setChats(prevChats => 
+        prevChats.filter(chat => !chatIds.includes(chat.chat_id))
+      );
+      
+      // Clear loading states immediately since chats are already removed from UI
+      setDeletingChatIds(new Set());
+      
       // Delete all selected chats in parallel
       await Promise.all(
         chatIds.map(chatId => chatService.deleteChat(chatId, user!.id))
@@ -327,6 +405,14 @@ export default function NewChatPage() {
     } catch (error) {
       console.error('Error in bulk delete:', error);
       showError('Failed to delete some chats. Please try again.');
+      
+      // If there was an error, refresh the chat list to restore any chats that weren't actually deleted
+      try {
+        const chatData = await chatService.getUserChats(user!.id);
+        setChats(chatData || []);
+      } catch (refreshError) {
+        console.error('Error refreshing chat list after failed bulk delete:', refreshError);
+      }
     } finally {
       // Clear all loading states
       setDeletingChatIds(new Set());
@@ -343,6 +429,16 @@ export default function NewChatPage() {
     }
   }, [showDeleteModal]);
 
+  // Trigger modal entrance animation when showRenameModal becomes true
+  useEffect(() => {
+    if (showRenameModal) {
+      // Small delay to ensure DOM elements are rendered
+      setTimeout(() => {
+        animateModalIn();
+      }, 10);
+    }
+  }, [showRenameModal]);
+
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = () => {
@@ -355,6 +451,21 @@ export default function NewChatPage() {
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [openMenuChatId]);
+
+  // Fetch user chats
+  const fetchUserChats = useCallback(async () => {
+    try {
+      setIsLoadingChats(true);
+      const chatData = await chatService.getUserChats(user!.id);
+      setChats(chatData || []);
+    } catch (error) {
+      console.error('Error fetching chats:', error);
+      // Don't show error to user for chat history, just show empty state
+      setChats([]);
+    } finally {
+      setIsLoadingChats(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!loading) {
@@ -375,7 +486,7 @@ export default function NewChatPage() {
       // Fetch user chats
       fetchUserChats();
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, fetchUserChats]);
 
   // Set up real-time subscription for chat history
   useEffect(() => {
@@ -413,10 +524,15 @@ export default function NewChatPage() {
             setChats(prev => 
               prev.filter(chat => chat.chat_id !== deletedChat.chat_id)
             );
-            // Clear loading state if this chat was being deleted
+            // Clear loading state if this chat was being deleted (both single and bulk)
             setDeletingChatId(prevId => 
               prevId === deletedChat.chat_id ? null : prevId
             );
+            setDeletingChatIds(prevIds => {
+              const newIds = new Set(prevIds);
+              newIds.delete(deletedChat.chat_id);
+              return newIds;
+            });
           }
         }
       )
@@ -426,21 +542,6 @@ export default function NewChatPage() {
       supabase.removeChannel(channel);
     };
   }, [user, supabase]);
-
-  // Fetch user chats
-  const fetchUserChats = async () => {
-    try {
-      setIsLoadingChats(true);
-      const chatData = await chatService.getUserChats(user!.id);
-      setChats(chatData || []);
-    } catch (error) {
-      console.error('Error fetching chats:', error);
-      // Don't show error to user for chat history, just show empty state
-      setChats([]);
-    } finally {
-      setIsLoadingChats(false);
-    }
-  };
 
   // GSAP animation handlers for textarea
   const handleMouseEnter = () => {
@@ -1091,6 +1192,124 @@ export default function NewChatPage() {
                 }}
               >
                 {isDeleteButtonCooldown ? 'Please wait...' : 'Delete'}
+              </button>
+            </div>
+            </div>
+          </div>
+        </>
+      )}
+      
+      {/* Custom Rename Modal */}
+      {showRenameModal && (
+        <>
+          {/* Backdrop overlay with blur */}
+          <div 
+            ref={modalBackdropRef}
+            className="fixed inset-0 z-[9999]"
+            style={{
+              backdropFilter: 'blur(8px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(8px) saturate(180%)',
+              backgroundColor: 'rgba(0, 0, 0, 0.25)',
+              cursor: isModalAnimating ? 'default' : 'pointer'
+            }}
+            onClick={isModalAnimating ? undefined : cancelRenameChat}
+          />
+          {/* Modal container */}
+          <div 
+            className="fixed inset-0 flex items-center justify-center z-[10000] pointer-events-none"
+            style={{ zIndex: 10000 }}
+          >
+            <div 
+              ref={modalContentRef}
+              className="rounded-lg p-6 w-full max-w-md shadow-2xl pointer-events-auto"
+              style={{ 
+                backgroundColor: 'var(--primary)',
+                border: '1px solid var(--border)'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+            <h3 className="text-lg font-medium mb-4" style={{ color: 'var(--text)' }}>
+              Rename Chat
+            </h3>
+            <div className="mb-6">
+              <input
+                type="text"
+                value={renameInput}
+                onChange={(e) => setRenameInput(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border rename-input"
+                style={{
+                  backgroundColor: 'var(--background)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--text)'
+                }}
+                placeholder="Enter new chat name"
+                maxLength={100}
+                disabled={isModalAnimating || isRenamingChat}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    confirmRenameChat();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelRenameChat();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                className="px-4 py-2 rounded-lg font-medium transition-colors"
+                style={{ 
+                  backgroundColor: 'transparent',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  opacity: isModalAnimating || isRenamingChat ? 0.6 : 1,
+                  cursor: isModalAnimating || isRenamingChat ? 'not-allowed' : 'pointer'
+                }}
+                onClick={cancelRenameChat}
+                disabled={isModalAnimating || isRenamingChat}
+                onMouseEnter={(e) => {
+                  if (!isModalAnimating && !isRenamingChat) {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--border)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isModalAnimating && !isRenamingChat) {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                  }
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+                style={{ 
+                  backgroundColor: (isModalAnimating || isRenamingChat || !renameInput.trim()) ? '#9ca3af' : 'var(--accent-main)',
+                  color: 'white',
+                  border: 'none',
+                  opacity: (isModalAnimating || isRenamingChat || !renameInput.trim()) ? 0.6 : 1,
+                  cursor: (isModalAnimating || isRenamingChat || !renameInput.trim()) ? 'not-allowed' : 'pointer'
+                }}
+                onClick={confirmRenameChat}
+                disabled={isModalAnimating || isRenamingChat || !renameInput.trim()}
+                onMouseEnter={(e) => {
+                  if (!isModalAnimating && !isRenamingChat && renameInput.trim()) {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--accent-hover)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isModalAnimating && !isRenamingChat && renameInput.trim()) {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--accent-main)';
+                  } else if (!renameInput.trim()) {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#9ca3af';
+                  }
+                }}
+              >
+                {isRenamingChat && (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                )}
+                Rename
               </button>
             </div>
             </div>

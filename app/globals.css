@@ -349,4 +349,11 @@ body {
 
 .hljs-strong {
   font-weight: bold !important;
+}
+
+/* Custom focus styles for rename input */
+.rename-input:focus {
+  outline: none;
+  border-color: var(--accent-main);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 } 

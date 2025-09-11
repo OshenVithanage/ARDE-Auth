@@ -190,7 +190,7 @@ export const chatService = {
   },
 
   // Update chat other data (JSONB column)
-  updateChatOther: async (chatId: string, otherData: Record<string, any>) => {
+  updateChatOther: async (chatId: string, otherData: Record<string, unknown>) => {
     try {
       const { data, error } = await supabase
         .from('Chats')

@@ -12,7 +12,7 @@ export default function Signup() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
-    const { showError, showWarning, showSuccess } = useToast()
+    const { showError, showSuccess } = useToast()
     const supabase = createClientComponentClient()
     const router = useRouter()
     const { user, loading: authLoading } = useAuth()
@@ -180,7 +180,7 @@ export default function Signup() {
     const handleSocialSignup = async (provider: 'google' | 'apple') => {
         try {
             setLoading(true);
-            const { data, error } = await supabase.auth.signInWithOAuth({
+            const { error } = await supabase.auth.signInWithOAuth({
                 provider: provider,
                 options: {
                     redirectTo: `${window.location.origin}/accounts`,
