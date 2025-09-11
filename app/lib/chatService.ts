@@ -48,7 +48,7 @@ export const chatService = {
     try {
       const { data, error } = await supabase
         .from('Chats')
-        .select('chat_id, created_at, number_of_messages, name')
+        .select('chat_id, created_at, number_of_messages, name, other')
         .eq('Owner', userId)
         .order('created_at', { ascending: false });
 
@@ -185,6 +185,24 @@ export const chatService = {
       return true;
     } catch (error) {
       console.error('Error deleting chat:', error);
+      throw error;
+    }
+  },
+
+  // Update chat other data (JSONB column)
+  updateChatOther: async (chatId: string, otherData: Record<string, any>) => {
+    try {
+      const { data, error } = await supabase
+        .from('Chats')
+        .update({ other: otherData })
+        .eq('chat_id', chatId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating chat other data:', error);
       throw error;
     }
   },

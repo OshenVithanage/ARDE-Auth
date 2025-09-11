@@ -16,6 +16,10 @@ interface Chat {
   created_at: string;
   number_of_messages: number;
   name?: string;
+  other?: {
+    starred?: boolean;
+    [key: string]: any;
+  };
 }
 
 export default function NewChatPage() {
@@ -28,6 +32,8 @@ export default function NewChatPage() {
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const secondBoxRef = useRef<HTMLDivElement>(null);
+  const modalBackdropRef = useRef<HTMLDivElement>(null);
+  const modalContentRef = useRef<HTMLDivElement>(null);
   const { isExpanded, toggleSidebar } = useSidebar();
   const { showError } = useToast();
   const [isStarFilled, setIsStarFilled] = useState(false);
@@ -35,12 +41,23 @@ export default function NewChatPage() {
   const [menuPosition, setMenuPosition] = useState<{top: number, right: number} | null>(null);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
+  const [deletingChatIds, setDeletingChatIds] = useState<Set<string>>(new Set());
   // State for custom delete confirmation modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [chatToDelete, setChatToDelete] = useState<{id: string, name: string} | null>(null);
+  const [isModalAnimating, setIsModalAnimating] = useState(false);
+  const [isDeleteButtonCooldown, setIsDeleteButtonCooldown] = useState(false);
+  // State for selection mode
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
   const supabase = createClientComponentClient();
 
-  // Handle star toggle
+  // Filter chats based on star filter state
+  const filteredChats = isStarFilled 
+    ? chats.filter(chat => chat.other?.starred === true)  // Show only starred chats when star filter is active
+    : chats.filter(chat => !chat.other?.starred); // Hide starred chats in normal mode (includes null/undefined)
+
+  // Handle star filter toggle
   const handleStarToggle = () => {
     setIsStarFilled(!isStarFilled);
   };
@@ -65,8 +82,9 @@ export default function NewChatPage() {
   // Handle menu actions
   const handleSelectChat = (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    // TODO: Implement select functionality
-    console.log('Select chat:', chatId);
+    // Enter selection mode and select this chat
+    setIsSelectionMode(true);
+    setSelectedChats(new Set([chatId]));
     setOpenMenuChatId(null);
   };
 
@@ -75,6 +93,44 @@ export default function NewChatPage() {
     // TODO: Implement rename functionality
     console.log('Rename chat:', chatId);
     setOpenMenuChatId(null);
+  };
+
+  const handleStarChat = async (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenMenuChatId(null);
+    
+    try {
+      // Find the current chat
+      const currentChat = chats.find(chat => chat.chat_id === chatId);
+      if (!currentChat) return;
+      
+      // Toggle star status
+      const isCurrentlyStarred = currentChat.other?.starred || false;
+      const newStarredStatus = !isCurrentlyStarred;
+      
+      // Update the chat in Supabase
+      await chatService.updateChatOther(chatId, { starred: newStarredStatus });
+      
+      // Update local state optimistically
+      setChats(prevChats => 
+        prevChats.map(chat => 
+          chat.chat_id === chatId 
+            ? { 
+                ...chat, 
+                other: { 
+                  ...chat.other, 
+                  starred: newStarredStatus 
+                } 
+              }
+            : chat
+        )
+      );
+      
+      console.log(`Chat ${newStarredStatus ? 'starred' : 'unstarred'} successfully`);
+    } catch (error) {
+      console.error('Error updating star status:', error);
+      showError('Failed to update star status. Please try again.');
+    }
   };
 
   const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
@@ -94,16 +150,33 @@ export default function NewChatPage() {
     // Set the chat to delete and show custom confirmation modal
     const chatName = chatToDelete.name || `Chat from ${new Date(chatToDelete.created_at).toLocaleDateString()}`;
     setChatToDelete({id: chatId, name: chatName});
+    // Reset cooldown when opening new modal
+    setIsDeleteButtonCooldown(false);
     setShowDeleteModal(true);
   };
   
   const confirmDeleteChat = async () => {
-    if (!chatToDelete) return;
+    if (!chatToDelete || isModalAnimating || isDeleteButtonCooldown) return;
     
     const chatId = chatToDelete.id;
+    setIsModalAnimating(true);
+    setIsDeleteButtonCooldown(true);
     
-    // Close the modal
-    setShowDeleteModal(false);
+    // Start 2-second cooldown timer
+    setTimeout(() => {
+      setIsDeleteButtonCooldown(false);
+    }, 2000);
+    
+    // Animate modal out and then proceed with deletion
+    animateModalOut(() => {
+      setShowDeleteModal(false);
+      setIsModalAnimating(false);
+      // Continue with deletion after animation
+      proceedWithDeletion(chatId);
+    });
+  };
+
+  const proceedWithDeletion = async (chatId: string) => {
     
     // Set loading state for this specific chat
     setDeletingChatId(chatId);
@@ -130,9 +203,145 @@ export default function NewChatPage() {
   };
   
   const cancelDeleteChat = () => {
-    setShowDeleteModal(false);
-    setChatToDelete(null);
+    if (isModalAnimating) return;
+    
+    setIsModalAnimating(true);
+    // Reset cooldown when cancelling
+    setIsDeleteButtonCooldown(false);
+    // Animate modal out
+    animateModalOut(() => {
+      setShowDeleteModal(false);
+      setChatToDelete(null);
+      setIsModalAnimating(false);
+    });
   };
+
+  // GSAP animation functions for modal
+  const animateModalIn = () => {
+    if (modalBackdropRef.current && modalContentRef.current) {
+      setIsModalAnimating(true);
+      const tl = gsap.timeline({
+        onComplete: () => setIsModalAnimating(false)
+      });
+      
+      // Set initial states
+      gsap.set(modalBackdropRef.current, { opacity: 0 });
+      gsap.set(modalContentRef.current, { scale: 0.8, opacity: 0, y: 20 });
+      
+      // Animate backdrop in
+      tl.to(modalBackdropRef.current, {
+        opacity: 1,
+        duration: 0.3,
+        ease: "power2.out"
+      })
+      // Then animate modal content in
+      .to(modalContentRef.current, {
+        scale: 1,
+        opacity: 1,
+        y: 0,
+        duration: 0.4,
+        ease: "back.out(1.7)"
+      }, "-=0.1");
+    }
+  };
+
+  const animateModalOut = (callback: () => void) => {
+    if (modalBackdropRef.current && modalContentRef.current) {
+      const tl = gsap.timeline({
+        onComplete: callback
+      });
+      
+      // Animate modal content out first
+      tl.to(modalContentRef.current, {
+        scale: 0.9,
+        opacity: 0,
+        y: -10,
+        duration: 0.25,
+        ease: "power2.in"
+      })
+      // Then animate backdrop out
+      .to(modalBackdropRef.current, {
+        opacity: 0,
+        duration: 0.2,
+        ease: "power2.in"
+      }, "-=0.1");
+    } else {
+      callback();
+    }
+  };
+
+  // Selection mode functions
+  const toggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode);
+    // Clear selected chats when exiting selection mode
+    if (isSelectionMode) {
+      setSelectedChats(new Set());
+    }
+  };
+
+  const toggleChatSelection = (chatId: string) => {
+    setSelectedChats(prev => {
+      const newSelected = new Set(prev);
+      if (newSelected.has(chatId)) {
+        newSelected.delete(chatId);
+      } else {
+        newSelected.add(chatId);
+      }
+      return newSelected;
+    });
+  };
+
+  const selectAllChats = () => {
+    const allChatIds = new Set(filteredChats.map(chat => chat.chat_id));
+    setSelectedChats(allChatIds);
+  };
+
+  const deselectAllChats = () => {
+    setSelectedChats(new Set());
+  };
+
+  const cancelSelectionMode = () => {
+    setIsSelectionMode(false);
+    setSelectedChats(new Set());
+  };
+
+  const bulkDeleteChats = async () => {
+    if (selectedChats.size === 0) return;
+    
+    const chatIds = Array.from(selectedChats);
+    
+    // Exit selection mode
+    setIsSelectionMode(false);
+    setSelectedChats(new Set());
+    
+    // Set loading state for all selected chats
+    setDeletingChatIds(new Set(chatIds));
+    
+    try {
+      // Delete all selected chats in parallel
+      await Promise.all(
+        chatIds.map(chatId => chatService.deleteChat(chatId, user!.id))
+      );
+      
+      console.log('Bulk delete successful');
+    } catch (error) {
+      console.error('Error in bulk delete:', error);
+      showError('Failed to delete some chats. Please try again.');
+    } finally {
+      // Clear all loading states
+      setDeletingChatIds(new Set());
+    }
+  };
+
+  // Trigger modal entrance animation when showDeleteModal becomes true
+  useEffect(() => {
+    if (showDeleteModal) {
+      // Small delay to ensure DOM elements are rendered
+      setTimeout(() => {
+        animateModalIn();
+      }, 10);
+    }
+  }, [showDeleteModal]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -467,8 +676,74 @@ export default function NewChatPage() {
               // Chat history - only visible when expanded
               <div className="h-full flex flex-col relative">
                 <div className="text-sm font-medium mb-4 px-4 mt-4 flex items-center justify-between" style={{ color: 'var(--text)' }}>
-                  <span>Chat History</span>
-                  <button
+                  <span>
+                    {isSelectionMode 
+                      ? `${selectedChats.size} Selected`
+                      : (isStarFilled ? 'Starred Chats' : 'Chat History')
+                    }
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {/* Selection mode buttons - animated */}
+                    <div 
+                      className="flex items-center gap-2 transition-all duration-300 ease-out"
+                      style={{
+                        transform: isSelectionMode ? 'translateX(0)' : 'translateX(20px)',
+                        opacity: isSelectionMode ? 1 : 0,
+                        visibility: isSelectionMode ? 'visible' : 'hidden'
+                      }}
+                    >
+                      <button
+                        onClick={bulkDeleteChats}
+                        className="p-1 rounded transition-colors hover:bg-opacity-10"
+                        style={{ 
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          cursor: selectedChats.size > 0 ? 'pointer' : 'not-allowed',
+                          opacity: selectedChats.size > 0 ? 1 : 0.5
+                        }}
+                        disabled={selectedChats.size === 0}
+                        onMouseEnter={(e) => {
+                          if (selectedChats.size > 0) {
+                            (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--border)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M3 6H5H21M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" 
+                                stroke="#ef4444" 
+                                strokeWidth="1.5" 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round"/>
+                          <line x1="10" y1="11" x2="10" y2="17" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          <line x1="14" y1="11" x2="14" y2="17" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      <button
+                        onClick={cancelSelectionMode}
+                        className="p-1 rounded transition-colors hover:bg-opacity-10"
+                        style={{ 
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer'
+                        }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--border)';
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <line x1="18" y1="6" x2="6" y2="18" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <line x1="6" y1="6" x2="18" y2="18" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                    {/* Star button - always visible */}
+                    <button
                     onClick={handleStarToggle}
                     className="p-1 rounded transition-colors hover:bg-opacity-10"
                     style={{ 
@@ -495,6 +770,7 @@ export default function NewChatPage() {
                       </svg>
                     )}
                   </button>
+                  </div>
                 </div>
                 <div className="flex-1 overflow-y-auto px-5 pb-4 custom-scrollbar">
                   {isLoadingChats ? (
@@ -507,13 +783,13 @@ export default function NewChatPage() {
                         ></div>
                       ))}
                     </div>
-                  ) : chats.length === 0 ? (
+                  ) : filteredChats.length === 0 ? (
                     <div className="text-sm py-4 text-center" style={{ color: 'var(--text)' }}>
-                      No chat history yet
+                      {isStarFilled ? 'Starred Chats' : 'No chat history yet'}
                     </div>
                   ) : (
                     <div className="space-y-0 -mx-5">
-                      {chats.map((chat, index) => (
+                      {filteredChats.map((chat, index) => (
                         <div key={chat.chat_id} data-chat-id={chat.chat_id}>
                           {index === 0 && (
                             <div 
@@ -522,10 +798,12 @@ export default function NewChatPage() {
                             ></div>
                           )}
                           <div
-                            onClick={() => handleChatSelect(chat.chat_id)}
-                            className="px-8 py-3 cursor-pointer hover:bg-opacity-10 transition-colors truncate relative group"
+                            onClick={() => isSelectionMode ? toggleChatSelection(chat.chat_id) : handleChatSelect(chat.chat_id)}
+                            className="py-3 cursor-pointer hover:bg-opacity-10 transition-colors truncate relative group flex items-center"
                             style={{ 
-                              color: 'var(--text)'
+                              color: 'var(--text)',
+                              paddingLeft: isSelectionMode ? '12px' : '32px',
+                              paddingRight: '32px'
                             }}
                             onMouseEnter={(e) => {
                               (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--border)';
@@ -534,12 +812,37 @@ export default function NewChatPage() {
                               (e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent';
                             }}
                           >
-                            <div className="truncate pr-8">
+                            {/* Checkbox - visible in selection mode */}
+                            {isSelectionMode && (
+                              <div 
+                                className="flex-shrink-0 mr-3 transition-all duration-300 ease-out"
+                                style={{
+                                  transform: isSelectionMode ? 'translateX(0)' : 'translateX(-20px)',
+                                  opacity: isSelectionMode ? 1 : 0
+                                }}
+                              >
+                                <div 
+                                  className="w-5 h-5 rounded border-2 flex items-center justify-center transition-all duration-200"
+                                  style={{
+                                    borderColor: selectedChats.has(chat.chat_id) ? 'white' : 'white',
+                                    backgroundColor: selectedChats.has(chat.chat_id) ? 'white' : 'transparent'
+                                  }}
+                                >
+                                  {selectedChats.has(chat.chat_id) && (
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <path d="M9 12L11 14L15 10" stroke="var(--accent-main)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            <div className="truncate pr-8 flex-1">
                               {chat.name || `Chat from ${new Date(chat.created_at).toLocaleDateString()}`}
                             </div>
-                            {/* Three dots icon - visible on hover, when menu is open, or when deleting */}
+                            {/* Three dots icon - visible on hover, when menu is open, or when deleting (hidden in selection mode) */}
+                            {!isSelectionMode && (
                             <div className={`absolute right-3 top-1/2 transform -translate-y-1/2 transition-opacity ${
-                              openMenuChatId === chat.chat_id || deletingChatId === chat.chat_id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                              openMenuChatId === chat.chat_id || deletingChatId === chat.chat_id || deletingChatIds.has(chat.chat_id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                             }`}>
                               <button
                                 onClick={(e) => handleMenuToggle(chat.chat_id, e)}
@@ -555,9 +858,9 @@ export default function NewChatPage() {
                                 onMouseLeave={(e) => {
                                   (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
                                 }}
-                                disabled={deletingChatId === chat.chat_id}
+                                disabled={deletingChatId === chat.chat_id || deletingChatIds.has(chat.chat_id)}
                               >
-                                {deletingChatId === chat.chat_id ? (
+                                {(deletingChatId === chat.chat_id || deletingChatIds.has(chat.chat_id)) ? (
                                   <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" style={{ color: 'var(--text)' }}></div>
                                 ) : (
                                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -631,6 +934,36 @@ export default function NewChatPage() {
                                     <span>Rename</span>
                                   </button>
                                   
+                                  {/* Star Option */}
+                                  <button
+                                    onClick={(e) => handleStarChat(chat.chat_id, e)}
+                                    className="w-full px-3 py-2 text-left flex items-center gap-3 hover:bg-opacity-10 transition-colors"
+                                    style={{ 
+                                      color: 'var(--text)',
+                                      backgroundColor: 'transparent',
+                                      border: 'none'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--border)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                                    }}
+                                  >
+                                    {chat.other?.starred ? (
+                                      // Filled star for starred chats
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="#fbbf24" />
+                                      </svg>
+                                    ) : (
+                                      // Outline star for unstarred chats
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="var(--text)" strokeWidth="1.5" fill="none" />
+                                      </svg>
+                                    )}
+                                    <span>{chat.other?.starred ? 'Unstar' : 'Star'}</span>
+                                  </button>
+                                  
                                   {/* Delete Option */}
                                   <button
                                     onClick={(e) => handleDeleteChat(chat.chat_id, e)}
@@ -658,6 +991,7 @@ export default function NewChatPage() {
                                 document.body
                               )}
                             </div>
+                            )}
                           </div>
                           <div 
                             className="h-px" 
@@ -676,19 +1010,33 @@ export default function NewChatPage() {
       
       {/* Custom Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-[10000]"
-          style={{ zIndex: 10000 }}
-          onClick={cancelDeleteChat}
-        >
+        <>
+          {/* Backdrop overlay with blur */}
           <div 
-            className="rounded-lg p-6 w-full max-w-md"
-            style={{ 
-              backgroundColor: 'var(--primary)',
-              border: '1px solid var(--border)'
+            ref={modalBackdropRef}
+            className="fixed inset-0 z-[9999]"
+            style={{
+              backdropFilter: 'blur(8px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(8px) saturate(180%)',
+              backgroundColor: 'rgba(0, 0, 0, 0.25)',
+              cursor: isModalAnimating ? 'default' : 'pointer'
             }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={isModalAnimating ? undefined : cancelDeleteChat}
+          />
+          {/* Modal container */}
+          <div 
+            className="fixed inset-0 flex items-center justify-center z-[10000] pointer-events-none"
+            style={{ zIndex: 10000 }}
           >
+            <div 
+              ref={modalContentRef}
+              className="rounded-lg p-6 w-full max-w-md shadow-2xl pointer-events-auto"
+              style={{ 
+                backgroundColor: 'var(--primary)',
+                border: '1px solid var(--border)'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--text)' }}>
               Confirm Delete
             </h3>
@@ -701,14 +1049,21 @@ export default function NewChatPage() {
                 style={{ 
                   backgroundColor: 'transparent',
                   color: 'var(--text)',
-                  border: '1px solid var(--border)'
+                  border: '1px solid var(--border)',
+                  opacity: isModalAnimating ? 0.6 : 1,
+                  cursor: isModalAnimating ? 'not-allowed' : 'pointer'
                 }}
                 onClick={cancelDeleteChat}
+                disabled={isModalAnimating}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--border)';
+                  if (!isModalAnimating) {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--border)';
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                  if (!isModalAnimating) {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                  }
                 }}
               >
                 Cancel
@@ -716,23 +1071,31 @@ export default function NewChatPage() {
               <button
                 className="px-4 py-2 rounded-lg font-medium transition-colors"
                 style={{ 
-                  backgroundColor: '#ef4444',
+                  backgroundColor: (isModalAnimating || isDeleteButtonCooldown) ? '#9ca3af' : '#ef4444',
                   color: 'white',
-                  border: 'none'
+                  border: 'none',
+                  opacity: (isModalAnimating || isDeleteButtonCooldown) ? 0.6 : 1,
+                  cursor: (isModalAnimating || isDeleteButtonCooldown) ? 'not-allowed' : 'pointer'
                 }}
                 onClick={confirmDeleteChat}
+                disabled={isModalAnimating || isDeleteButtonCooldown}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#dc2626';
+                  if (!isModalAnimating && !isDeleteButtonCooldown) {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#dc2626';
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#ef4444';
+                  if (!isModalAnimating && !isDeleteButtonCooldown) {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#ef4444';
+                  }
                 }}
               >
-                Delete
+                {isDeleteButtonCooldown ? 'Please wait...' : 'Delete'}
               </button>
             </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
